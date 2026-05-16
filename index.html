@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scoutmap</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="map-wrap" aria-label="Karta">
+        <div id="map"></div>
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Klätterscouting</p>
+            <h1>Scoutmap</h1>
+          </div>
+          <button class="icon-button" id="locateButton" type="button" title="Gå till min position" aria-label="Gå till min position">
+            <span aria-hidden="true">⌖</span>
+          </button>
+        </div>
+        <div class="map-actions">
+          <button id="newAtCenterButton" type="button">Ny plats här</button>
+          <button id="newAtMeButton" type="button">Ny vid mig</button>
+        </div>
+      </section>
+
+      <aside class="place-panel" id="placePanel" aria-label="Platsdetaljer">
+        <div class="panel-empty" id="emptyState">
+          <p class="eyebrow">Ingen plats vald</p>
+          <h2>Tryck på kartan eller skapa en ny punkt.</h2>
+          <p>Spara potential, access, bergkvalitet, bilder och nästa steg medan du är ute.</p>
+        </div>
+
+        <form class="editor hidden" id="placeForm">
+          <header class="panel-header">
+            <div>
+              <p class="eyebrow">Vald plats</p>
+              <input id="titleInput" class="title-input" type="text" placeholder="Namn på platsen" aria-label="Namn på platsen">
+            </div>
+            <button class="icon-button danger" id="deleteButton" type="button" title="Ta bort plats" aria-label="Ta bort plats">
+              <span aria-hidden="true">×</span>
+            </button>
+          </header>
+
+          <div class="meta-grid">
+            <label>
+              Latitud
+              <input id="latInput" type="number" step="0.000001">
+            </label>
+            <label>
+              Longitud
+              <input id="lngInput" type="number" step="0.000001">
+            </label>
+          </div>
+
+          <section class="gallery-section">
+            <div class="section-heading">
+              <h2>Bilder</h2>
+              <label class="file-button">
+                Lägg till
+                <input id="imageInput" type="file" accept="image/*" multiple>
+              </label>
+            </div>
+            <div class="gallery" id="gallery"></div>
+          </section>
+
+          <section class="notes-section">
+            <div class="section-heading">
+              <h2>Anteckningar</h2>
+              <button id="addBlockButton" type="button">Nytt block</button>
+            </div>
+            <div class="template-row" id="templateRow"></div>
+            <div class="blocks" id="blocks"></div>
+          </section>
+        </form>
+      </aside>
+    </main>
+
+    <template id="popupTemplate">
+      <article class="pin-popup">
+        <img class="popup-image" alt="">
+        <div>
+          <h3></h3>
+          <div class="popup-blocks"></div>
+          <button type="button" class="popup-open">Öppna</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
