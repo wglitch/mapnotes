@@ -269,3 +269,74 @@ h2 { font-size: 1.05rem; margin-bottom: 4px; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
 }
+
+/* Patch: clicking inside popup should feel like editing, not map creation */
+.leaflet-popup,
+.leaflet-popup-content,
+.leaflet-popup-content-wrapper {
+  cursor: auto;
+}
+
+/* Move popup pointer to the top so the card sits below the point instead of swallowing mobile screen space above it. */
+.leaflet-popup {
+  margin-bottom: 0;
+  margin-top: 20px;
+}
+
+.leaflet-popup-tip-container {
+  bottom: auto;
+  top: -20px;
+}
+
+.leaflet-popup-tip {
+  margin: 12px auto 0;
+}
+
+@media (max-width: 759px) {
+  .topbar {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    left: auto;
+    padding: 0;
+    right: 10px;
+    top: 10px;
+  }
+
+  .topbar > div {
+    display: none;
+  }
+
+  .topbar .icon-button {
+    background: rgba(255, 253, 248, 0.94);
+    border: 1px solid rgba(217, 210, 196, 0.85);
+    box-shadow: 0 8px 24px rgba(33, 37, 32, 0.16);
+    color: var(--accent-strong);
+  }
+
+  .map-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .map-actions button {
+    min-height: 36px;
+    padding: 0 8px;
+  }
+
+  .leaflet-popup-content {
+    width: min(340px, calc(100vw - 48px)) !important;
+  }
+
+  .pin-editor {
+    gap: 8px;
+    max-height: 66vh;
+  }
+
+  .popup-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .popup-template-row button {
+    min-height: 32px;
+  }
+}

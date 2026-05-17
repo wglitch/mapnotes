@@ -86,7 +86,14 @@ if (elements.closeImport) elements.closeImport.addEventListener("click", () => e
 if (elements.importFile) elements.importFile.addEventListener("change", importFile);
 if (elements.pasteImport) elements.pasteImport.addEventListener("click", importPastedText);
 
-map.on("click", (event) => safeCreatePlace(event.latlng.lat, event.latlng.lng));
+map.on("click", (event) => {
+  if (state.selectedId) {
+    state.selectedId = null;
+    map.closePopup();
+    return;
+  }
+  safeCreatePlace(event.latlng.lat, event.latlng.lng);
+});
 
 function safeCreatePlace(lat, lng) {
   try {
@@ -152,9 +159,20 @@ function renderMarkers() {
       maxWidth: 430,
       minWidth: 300,
       autoPan: true,
-      keepInView: true
+      keepInView: true,
+      offset: L.point(0, 34)
     });
-    marker.on("click", () => { state.selectedId = place.id; });
+    marker.on("click", (event) => {
+      if (event.originalEvent) L.DomEvent.stop(event.originalEvent);
+      state.selectedId = place.id;
+    });
+    marker.on("popupopen", () => {
+      state.selectedId = place.id;
+      stopPopupPropagation(marker);
+    });
+    marker.on("popupclose", () => {
+      if (state.selectedId === place.id) state.selectedId = null;
+    });
     marker.on("dragend", () => {
       const { lat, lng } = marker.getLatLng();
       place.lat = lat;
@@ -171,6 +189,7 @@ function renderMarkers() {
 function buildPopup(place) {
   const node = document.createElement("article");
   node.className = "pin-editor";
+  stopElementPropagation(node);
 
   const header = document.createElement("header");
   header.className = "pin-editor-header single";
@@ -358,6 +377,22 @@ function buildBlockEditor(place, block) {
   body.append(titleLabel, textLabel, remove);
   article.append(summary, body);
   return article;
+}
+
+function stopElementPropagation(element) {
+  if (!element) return;
+  if (window.L?.DomEvent) {
+    L.DomEvent.disableClickPropagation(element);
+    L.DomEvent.disableScrollPropagation(element);
+  }
+  ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend", "contextmenu"].forEach((eventName) => {
+    element.addEventListener(eventName, (event) => event.stopPropagation());
+  });
+}
+
+function stopPopupPropagation(marker) {
+  const popupElement = marker.getPopup()?.getElement?.();
+  stopElementPropagation(popupElement);
 }
 
 function getTextOnlyPlaces() {
