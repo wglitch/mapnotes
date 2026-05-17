@@ -12,7 +12,8 @@
 }
 
 * { box-sizing: border-box; }
-[hidden] { display: none !important; }
+[hidden],
+.hidden { display: none !important; }
 html, body, .app-shell, #map { height: 100%; }
 body {
   margin: 0;
@@ -308,16 +309,28 @@ textarea::placeholder { color: #8a948b; opacity: 0.82; }
 }
 
 .editor-overlay::before {
-  border-bottom: 15px solid var(--panel);
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
+  border-bottom: 20px solid #e53935;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
   content: "";
-  left: calc(var(--pip-left) - 10px);
+  left: calc(var(--pip-left) - 14px);
   position: absolute;
-  top: -14px;
+  top: -20px;
   width: 0;
   height: 0;
-  filter: drop-shadow(0 -2px 1px rgba(33, 37, 32, 0.08));
+  filter: drop-shadow(0 -2px 2px rgba(33, 37, 32, 0.28));
+}
+
+.editor-overlay::after {
+  border-bottom: 13px solid var(--panel);
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  content: "";
+  height: 0;
+  left: calc(var(--pip-left) - 9px);
+  position: absolute;
+  top: -13px;
+  width: 0;
 }
 
 .editor-overlay .place-card {

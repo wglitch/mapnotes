@@ -70,6 +70,7 @@ moveOverlay.innerHTML = `
 moveOverlay.querySelector(".move-cancel").addEventListener("click", () => {
   state.suppressMapCreateUntil = Date.now() + 350;
   stopMoveMode();
+  showSaveStatus("Sparat lokalt");
 });
 elements.appShell.append(moveOverlay);
 
@@ -146,7 +147,6 @@ function createPlace(lat, lng) {
   persist();
   renderMarkers();
   openPlace(place.id);
-  map.setView([lat, lng], Math.max(map.getZoom(), 15));
 }
 
 function openPlace(id) {
@@ -236,6 +236,7 @@ function renderEditorOverlay(place) {
   editorOverlay.classList.remove("hidden");
   editorOverlay.append(buildPopup(place));
   positionActiveOverlay();
+  panMapForOverlay(place);
 }
 
 function positionActiveOverlay() {
@@ -262,6 +263,35 @@ function positionActiveOverlay() {
   editorOverlay.style.left = `${left}px`;
   editorOverlay.style.top = `${top}px`;
   editorOverlay.style.setProperty("--pip-left", `${pipLeft}px`);
+}
+
+function panMapForOverlay(place) {
+  requestAnimationFrame(() => {
+    if (state.selectedId !== place.id || editorOverlay.classList.contains("hidden")) return;
+
+    const mapSize = map.getSize();
+    const markerPoint = map.latLngToContainerPoint([place.lat, place.lng]);
+    const margin = window.innerWidth <= 680 ? 16 : 18;
+    const cardWidth = editorOverlay.offsetWidth || Math.min(420, window.innerWidth - 42);
+    const cardHeight = editorOverlay.offsetHeight || 320;
+
+    const targetX = Math.min(
+      Math.max(margin + 96, markerPoint.x),
+      Math.max(margin + 96, mapSize.x - cardWidth + 54)
+    );
+    const targetY = Math.min(
+      Math.max(margin + 72, markerPoint.y),
+      Math.max(margin + 72, mapSize.y - cardHeight - margin - 18)
+    );
+
+    const dx = markerPoint.x - targetX;
+    const dy = markerPoint.y - targetY;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      map.panBy([dx, dy], { animate: true, duration: 0.22 });
+    } else {
+      positionActiveOverlay();
+    }
+  });
 }
 
 function buildPopup(place) {
