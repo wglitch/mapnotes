@@ -194,9 +194,10 @@ function renderMarkers() {
       maxWidth: 420,
       minWidth: 280,
       autoPan: true,
-      autoPanPaddingTopLeft: [14, 14],
-      autoPanPaddingBottomRight: [14, 14],
-      offset: [180, 8]
+      autoPanPaddingTopLeft: [18, 18],
+      autoPanPaddingBottomRight: [18, 18],
+      offset: [190, -4],
+      className: "top-left-popup"
     });
 
     marker.on("click", (event) => {

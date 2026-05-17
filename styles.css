@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body, .app-shell, #map { height: 100%; }
 body {
   margin: 0;
@@ -113,6 +114,45 @@ h1 { font-size: 1.35rem; line-height: 1.1; margin: 0; }
   top: 8px !important;
   width: 36px !important;
   z-index: 20;
+}
+
+.top-left-popup.leaflet-popup {
+  margin-bottom: 0;
+}
+
+.top-left-popup .leaflet-popup-content-wrapper {
+  transform: translateY(calc(100% - 24px));
+  transform-origin: 28px 0;
+}
+
+.top-left-popup .leaflet-popup-tip-container {
+  display: none;
+}
+
+.top-left-popup .place-card {
+  position: relative;
+}
+
+.top-left-popup .place-card::before {
+  border-bottom: 14px solid var(--panel);
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  content: "";
+  height: 0;
+  left: 18px;
+  position: absolute;
+  top: -13px;
+  width: 0;
+}
+
+.top-left-popup .place-card::after {
+  background: var(--panel);
+  content: "";
+  height: 12px;
+  left: 24px;
+  position: absolute;
+  top: -1px;
+  width: 8px;
 }
 
 .place-card {
@@ -273,6 +313,10 @@ textarea::placeholder { color: #8a948b; opacity: 0.82; }
     max-height: calc(100vh - 84px);
     padding: 12px;
   }
+  .top-left-popup .leaflet-popup-content-wrapper {
+    transform: translateY(calc(100% - 22px));
+  }
+
   .place-card-actions {
     display: grid;
     grid-template-columns: 1fr;
