@@ -1,124 +1,110 @@
 const STORAGE_KEY = "scoutmap.places.v1";
 
-window.addEventListener("error", (event) => {
-  const target = document.querySelector("#saveStatus");
-  if (target) target.textContent = `JS-fel: ${event.message}`;
-  console.error(event.error || event.message);
-});
-
-window.addEventListener("unhandledrejection", (event) => {
-  const target = document.querySelector("#saveStatus");
-  if (target) target.textContent = `JS-fel: ${event.reason?.message || event.reason}`;
-  console.error(event.reason);
-});
-
-const overviewTemplate = {
-  title: "Översikt",
-  body: "Kort helhetsbild: potential, access, bergkvalitet och vad som bör kollas nästa gång."
-};
-
 const templates = [
-  { title: "Potential", body: "Vad kan det här bli? Linjer, höjd, mängd klättring, känsla." },
-  { title: "Access", body: "Väg in, stig, markägare, grindar, känsliga passager." },
-  { title: "Berg", body: "Kvalitet, typ av klippa, sprickor, block, behov av rensning." },
-  { title: "Risker", body: "Lös sten, landningar, fallzoner, vatten, privat mark eller naturvärden." },
-  { title: "Parkering", body: "Var går det att ställa bilen utan att störa?" },
-  { title: "Nästa steg", body: "Vad behöver kollas nästa gång?" },
-  { title: "Reselogistik", body: "Boende, mat, vatten, vägval och annat som hör till en längre scoutingresa." }
+  { title: "Access", body: "" },
+  { title: "Berg", body: "" },
+  { title: "Risker", body: "" },
+  { title: "Parkering", body: "" },
+  { title: "Nästa steg", body: "" },
+  { title: "Reselogistik", body: "" },
+  { title: "Övrigt", body: "" }
 ];
 
+const overviewPlaceholder = "Kort helhetsbild: vad är det här för plats, varför är den intressant och vad behöver kollas nästa gång?";
+const blockPlaceholders = {
+  "Access": "Väg in, stig, markägare, grindar, känsliga passager.",
+  "Berg": "Kvalitet, typ av klippa, sprickor, block, behov av rensning.",
+  "Risker": "Lös sten, landningar, fallzoner, vatten, privat mark eller naturvärden.",
+  "Parkering": "Var går det att ställa bilen utan att störa?",
+  "Nästa steg": "Vad behöver kollas nästa gång?",
+  "Reselogistik": "Boende, mat, vatten, vägval och annat som hör till en längre scoutingresa.",
+  "Övrigt": "Skriv fritt här om något inte passar i de andra blocken."
+};
+
 const defaultCenter = [59.3293, 18.0686];
-const map = L.map("map", { zoomControl: false }).setView(defaultCenter, 11);
+const map = L.map("map", { zoomControl: false, closePopupOnClick: false }).setView(defaultCenter, 11);
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
-const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+const topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
   maxZoom: 17,
-  attribution: 'Kartdata: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bidragsgivare, SRTM | Kartstil: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
-}).addTo(map);
-
-const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bidragsgivare'
+  attribution: "Map data: &copy; OpenStreetMap, SRTM | Map style: &copy; OpenTopoMap"
 });
-
-L.control.layers({
-  "Höjdkurvor": topoLayer,
-  "Standardkarta": osmLayer
-}, null, { position: "bottomright" }).addTo(map);
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap"
+});
+topo.addTo(map);
+L.control.layers({ "Höjdkurvor": topo, "Standardkarta": osm }, null, { position: "bottomright" }).addTo(map);
 
 const state = {
   places: normalizePlaces(loadPlaces()),
   selectedId: null,
-  markers: new Map()
+  markers: new Map(),
+  moveModeId: null,
+  suppressMapCreateUntil: 0
 };
 
 const elements = {
+  saveStatus: document.querySelector("#saveStatus"),
   locate: document.querySelector("#locateButton"),
   newAtCenter: document.querySelector("#newAtCenterButton"),
   newAtMe: document.querySelector("#newAtMeButton"),
   exportButton: document.querySelector("#exportButton"),
-  openImport: document.querySelector("#openImportButton"),
-  importPanel: document.querySelector("#importPanel"),
-  closeImport: document.querySelector("#closeImportButton"),
-  importFile: document.querySelector("#importFileInput"),
-  importPaste: document.querySelector("#importPasteInput"),
-  pasteImport: document.querySelector("#pasteImportButton"),
-  saveStatus: document.querySelector("#saveStatus"),
-  syncStatus: document.querySelector("#syncStatus")
+  importInput: document.querySelector("#importInput")
 };
+
+window.addEventListener("error", (event) => showSaveStatus(`Fel: ${event.message}`));
 
 persist(false);
 renderMarkers();
 showSaveStatus("Sparat lokalt");
-setPopupUiOpen(false);
 
-if (elements.newAtCenter) elements.newAtCenter.addEventListener("click", () => {
-  const center = map.getCenter();
-  safeCreatePlace(center.lat, center.lng);
+map.on("click", (event) => {
+  if (Date.now() < state.suppressMapCreateUntil) return;
+
+  if (state.selectedId) {
+    closeActivePopup();
+    return;
+  }
+
+  createPlace(event.latlng.lat, event.latlng.lng);
 });
 
-if (elements.newAtMe) elements.newAtMe.addEventListener("click", () => {
+map.on("popupopen", () => {
+  document.body.classList.add("popup-is-open");
+});
+
+map.on("popupclose", () => {
+  document.body.classList.remove("popup-is-open");
+  state.selectedId = null;
+  stopMoveMode();
+  // Leaflet can close a popup and let the same pointer event continue to the map.
+  // This guard makes the first outside click close only, never create a new point.
+  state.suppressMapCreateUntil = Date.now() + 250;
+});
+
+elements.newAtCenter.addEventListener("click", () => {
+  const center = map.getCenter();
+  createPlace(center.lat, center.lng);
+});
+
+elements.newAtMe.addEventListener("click", () => {
   getCurrentPosition()
-    .then(({ latitude, longitude }) => safeCreatePlace(latitude, longitude))
+    .then(({ latitude, longitude }) => createPlace(latitude, longitude))
     .catch(() => {
       const center = map.getCenter();
-      safeCreatePlace(center.lat, center.lng);
+      createPlace(center.lat, center.lng);
     });
 });
 
-if (elements.locate) elements.locate.addEventListener("click", () => {
+elements.locate.addEventListener("click", () => {
   getCurrentPosition().then(({ latitude, longitude }) => {
     map.setView([latitude, longitude], 15);
   });
 });
 
-if (elements.exportButton) elements.exportButton.addEventListener("click", exportTextFile);
-if (elements.openImport) elements.openImport.addEventListener("click", () => elements.importPanel?.classList.remove("hidden"));
-if (elements.closeImport) elements.closeImport.addEventListener("click", () => elements.importPanel?.classList.add("hidden"));
-if (elements.importFile) elements.importFile.addEventListener("change", importFile);
-if (elements.pasteImport) elements.pasteImport.addEventListener("click", importPastedText);
-
-map.on("click", (event) => {
-  if (state.selectedId) {
-    state.selectedId = null;
-    map.closePopup();
-    return;
-  }
-  safeCreatePlace(event.latlng.lat, event.latlng.lng);
-});
-
-function setPopupUiOpen(isOpen) {
-  document.body.classList.toggle("popup-is-open", Boolean(isOpen));
-}
-
-function safeCreatePlace(lat, lng) {
-  try {
-    createPlace(lat, lng);
-  } catch (error) {
-    console.error("Kunde inte skapa plats", error);
-    showSaveStatus(`Kunde inte skapa plats: ${error?.message || error}`);
-  }
-}
+elements.exportButton.addEventListener("click", exportPlaces);
+elements.importInput.addEventListener("change", importPlacesFile);
 
 function createPlace(lat, lng) {
   const now = new Date().toISOString();
@@ -128,14 +114,15 @@ function createPlace(lat, lng) {
     lat,
     lng,
     priority: 3,
-    tags: [],
     images: [],
-    blocks: [{
-      id: newId(),
-      title: overviewTemplate.title,
-      body: overviewTemplate.body,
-      expanded: true
-    }],
+    blocks: [
+      {
+        id: newId(),
+        title: "Översikt",
+        body: "",
+        expanded: false
+      }
+    ],
     createdAt: now,
     updatedAt: now
   });
@@ -143,26 +130,47 @@ function createPlace(lat, lng) {
   state.places.unshift(place);
   persist();
   renderMarkers();
-  selectPlace(place.id);
+  openPlace(place.id);
   map.setView([lat, lng], Math.max(map.getZoom(), 15));
 }
 
-function selectPlace(id) {
+function openPlace(id) {
+  const place = state.places.find((item) => item.id === id);
+  if (!place) return;
+
   state.selectedId = id;
+  place.blocks.forEach((block) => {
+    block.expanded = false;
+  });
+
   const marker = state.markers.get(id);
-  if (!marker) return;
-  try {
-    marker.openPopup();
-  } catch (error) {
-    console.error("Kunde inte öppna popup", error);
-  }
+  if (marker) marker.openPopup();
 }
 
-function updatePlace(place, patch = {}) {
+function closeActivePopup() {
+  state.suppressMapCreateUntil = Date.now() + 250;
+  map.closePopup();
+}
+
+function updatePlace(place, patch) {
   Object.assign(place, patch, { updatedAt: new Date().toISOString() });
   persist();
+  refreshMarker(place.id);
+}
+
+function updateBlock(place, block, patch) {
+  Object.assign(block, patch);
+  place.updatedAt = new Date().toISOString();
+  persist();
+  refreshMarker(place.id);
+}
+
+function deletePlace(place) {
+  state.places = state.places.filter((item) => item.id !== place.id);
+  persist();
+  state.selectedId = null;
+  stopMoveMode();
   renderMarkers();
-  selectPlace(place.id);
 }
 
 function renderMarkers() {
@@ -170,401 +178,328 @@ function renderMarkers() {
   state.markers.clear();
 
   state.places.forEach((place) => {
-    const marker = L.marker([place.lat, place.lng], { draggable: true }).addTo(map);
-    marker.bindPopup(buildPopup(place), {
-      maxWidth: 430,
-      minWidth: 260,
+    const marker = L.marker([place.lat, place.lng], {
+      draggable: state.moveModeId === place.id,
+      autoPan: true
+    }).addTo(map);
+
+    marker.bindPopup(() => buildPopup(place), {
+      maxWidth: 420,
+      minWidth: 280,
       autoPan: true,
-      keepInView: true,
-      autoPanPaddingTopLeft: L.point(18, 18),
-      autoPanPaddingBottomRight: L.point(18, 18),
-      offset: L.point(0, 34)
+      autoPanPaddingTopLeft: [14, 14],
+      autoPanPaddingBottomRight: [14, 14],
+      offset: [0, 8]
     });
+
     marker.on("click", (event) => {
-      if (event.originalEvent) L.DomEvent.stop(event.originalEvent);
-      state.selectedId = place.id;
+      L.DomEvent.stop(event);
+      openPlace(place.id);
     });
-    marker.on("popupopen", () => {
-      state.selectedId = place.id;
-      setPopupUiOpen(true);
-      stopPopupPropagation(marker);
-    });
-    marker.on("popupclose", () => {
-      if (state.selectedId === place.id) state.selectedId = null;
-      setPopupUiOpen(false);
-    });
+
     marker.on("dragend", () => {
       const { lat, lng } = marker.getLatLng();
       place.lat = lat;
       place.lng = lng;
       place.updatedAt = new Date().toISOString();
       persist();
-      renderMarkers();
-      selectPlace(place.id);
+      showSaveStatus(`Flyttad · Sparat ${timeStamp()}`);
+      openPlace(place.id);
     });
+
     state.markers.set(place.id, marker);
   });
 }
 
-function buildPopup(place) {
-  const node = document.createElement("article");
-  node.className = "pin-editor";
-  stopElementPropagation(node);
+function refreshMarker(id) {
+  const place = state.places.find((item) => item.id === id);
+  const marker = state.markers.get(id);
+  if (!place || !marker) return;
 
-  const header = document.createElement("header");
-  header.className = "pin-editor-header single";
-
-  const titleInput = document.createElement("input");
-  titleInput.className = "popup-title-input";
-  titleInput.value = place.title || "";
-  titleInput.placeholder = "Namn på platsen";
-  titleInput.addEventListener("input", () => {
-    place.title = titleInput.value;
-    place.updatedAt = new Date().toISOString();
-    persist();
-  });
-  header.append(titleInput);
-
-  const meta = document.createElement("div");
-  meta.className = "popup-meta-grid";
-
-  const priorityLabel = document.createElement("label");
-  priorityLabel.textContent = "Prioritet";
-  const priority = document.createElement("select");
-  for (let i = 1; i <= 5; i += 1) {
-    const option = document.createElement("option");
-    option.value = String(i);
-    option.textContent = `${renderStars(i)} ${i}`;
-    priority.append(option);
+  marker.setLatLng([place.lat, place.lng]);
+  if (marker.isPopupOpen()) {
+    marker.setPopupContent(buildPopup(place));
   }
-  priority.value = String(place.priority || 3);
-  priority.addEventListener("change", () => updatePlace(place, { priority: Number(priority.value) }));
-  priorityLabel.append(priority);
+}
 
-  const tagsLabel = document.createElement("label");
-  tagsLabel.textContent = "Etiketter";
-  const tags = document.createElement("input");
-  tags.value = (place.tags || []).join(", ");
-  tags.placeholder = "access, rensning";
-  tags.addEventListener("input", () => {
-    place.tags = parseTags(tags.value);
-    place.updatedAt = new Date().toISOString();
-    persist();
+function buildPopup(place) {
+  const template = document.querySelector("#popupTemplate");
+  const node = template.content.firstElementChild.cloneNode(true);
+
+  L.DomEvent.disableClickPropagation(node);
+  L.DomEvent.disableScrollPropagation(node);
+
+  const titleInput = node.querySelector(".popup-title");
+  const stars = Array.from(node.querySelectorAll(".star"));
+  const toolbar = node.querySelector(".block-toolbar");
+  const blocksRoot = node.querySelector(".popup-blocks");
+  const moveButton = node.querySelector(".move-button");
+  const deleteButton = node.querySelector(".delete-button");
+
+  titleInput.value = place.title || "";
+  titleInput.addEventListener("input", () => updatePlace(place, { title: titleInput.value }));
+
+  renderStars(stars, place.priority || 3);
+  stars.forEach((button) => {
+    button.addEventListener("click", () => {
+      const priority = Number(button.dataset.priority);
+      updatePlace(place, { priority });
+      renderStars(stars, priority);
+    });
   });
-  tagsLabel.append(tags);
-  meta.append(priorityLabel, tagsLabel);
 
-  const position = document.createElement("details");
-  position.className = "position-details";
-  position.innerHTML = "<summary>Position</summary>";
-  const posGrid = document.createElement("div");
-  posGrid.className = "popup-meta-grid";
-  const latLabel = document.createElement("label");
-  latLabel.textContent = "Latitud";
-  const latInput = document.createElement("input");
-  latInput.type = "number";
-  latInput.step = "0.000001";
-  latInput.value = Number(place.lat).toFixed(6);
-  latLabel.append(latInput);
-  const lngLabel = document.createElement("label");
-  lngLabel.textContent = "Longitud";
-  const lngInput = document.createElement("input");
-  lngInput.type = "number";
-  lngInput.step = "0.000001";
-  lngInput.value = Number(place.lng).toFixed(6);
-  lngLabel.append(lngInput);
-  const updateCoordinates = () => {
-    const lat = Number(latInput.value);
-    const lng = Number(lngInput.value);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    place.lat = lat;
-    place.lng = lng;
-    place.updatedAt = new Date().toISOString();
-    persist();
-    renderMarkers();
-    selectPlace(place.id);
-    map.setView([lat, lng], map.getZoom());
-  };
-  latInput.addEventListener("change", updateCoordinates);
-  lngInput.addEventListener("change", updateCoordinates);
-  posGrid.append(latLabel, lngLabel);
-  position.append(posGrid);
-
-  const templateRow = document.createElement("div");
-  templateRow.className = "template-row popup-template-row";
-  templates.forEach((template) => {
+  templates.forEach((templateItem) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = `+ ${template.title}`;
+    button.className = "template-chip";
+    button.textContent = `+ ${templateItem.title}`;
     button.addEventListener("click", () => {
       place.blocks.push({
         id: newId(),
-        title: template.title,
-        body: template.body,
+        title: templateItem.title,
+        body: templateItem.body || "",
         expanded: true
       });
       place.updatedAt = new Date().toISOString();
       persist();
-      renderMarkers();
-      selectPlace(place.id);
+      markerReopen(place.id);
     });
-    templateRow.append(button);
+    toolbar.append(button);
   });
 
-  const blocks = document.createElement("div");
-  blocks.className = "popup-blocks-editor";
-  place.blocks.forEach((block) => blocks.append(buildBlockEditor(place, block)));
+  renderBlocks(place, blocksRoot);
 
-  const footer = document.createElement("footer");
-  footer.className = "popup-footer";
-  const saved = document.createElement("span");
-  saved.textContent = `Sparat lokalt · ${formatTime(place.updatedAt)}`;
-  const deleteButton = document.createElement("button");
-  deleteButton.type = "button";
-  deleteButton.className = "delete-place-button danger";
-  deleteButton.textContent = "Ta bort punkt";
-  deleteButton.title = "Tar bort hela kartpunkten";
+  moveButton.textContent = state.moveModeId === place.id ? "Klar flytt" : "Flytta punkt";
+  moveButton.classList.toggle("active", state.moveModeId === place.id);
+  moveButton.addEventListener("click", () => {
+    if (state.moveModeId === place.id) {
+      stopMoveMode();
+      moveButton.textContent = "Flytta punkt";
+      moveButton.classList.remove("active");
+    } else {
+      startMoveMode(place.id);
+      moveButton.textContent = "Klar flytt";
+      moveButton.classList.add("active");
+    }
+  });
+
   deleteButton.addEventListener("click", () => {
-    const ok = window.confirm("Ta bort hela punkten? Det här går inte att ångra.");
-    if (!ok) return;
-    state.places = state.places.filter((item) => item.id !== place.id);
-    state.selectedId = null;
-    setPopupUiOpen(false);
-    persist();
-    renderMarkers();
+    if (confirm("Ta bort punkten?")) deletePlace(place);
   });
-  footer.append(saved, deleteButton);
 
-  node.append(header, meta, position, templateRow, blocks, footer);
   return node;
 }
 
-function buildBlockEditor(place, block) {
-  const article = document.createElement("article");
-  article.className = "block popup-block";
+function renderBlocks(place, root) {
+  root.innerHTML = "";
 
-  const summary = document.createElement("button");
-  summary.type = "button";
-  summary.className = "block-summary compact";
-  summary.innerHTML = `<span aria-hidden="true">${block.expanded ? "▼" : "▶"}</span><span class="block-title"></span>`;
-  summary.querySelector(".block-title").textContent = block.title || "Anteckning";
-  summary.addEventListener("click", () => {
-    block.expanded = !block.expanded;
-    place.updatedAt = new Date().toISOString();
-    persist();
-    renderMarkers();
-    selectPlace(place.id);
-  });
+  place.blocks.forEach((block) => {
+    const article = document.createElement("article");
+    article.className = "block";
 
-  const body = document.createElement("div");
-  body.className = "block-body";
-  body.hidden = !block.expanded;
-
-  const titleLabel = document.createElement("label");
-  titleLabel.textContent = "Rubrik";
-  const titleInput = document.createElement("input");
-  titleInput.value = block.title || "";
-  titleInput.addEventListener("input", () => {
-    block.title = titleInput.value;
-    place.updatedAt = new Date().toISOString();
-    persist();
+    const summary = document.createElement("button");
+    summary.type = "button";
+    summary.className = "block-summary";
+    summary.innerHTML = `<span aria-hidden="true">${block.expanded ? "▼" : "▶"}</span><span class="block-title"></span>`;
     summary.querySelector(".block-title").textContent = block.title || "Anteckning";
-  });
-  titleLabel.append(titleInput);
+    summary.addEventListener("click", () => {
+      block.expanded = !block.expanded;
+      place.updatedAt = new Date().toISOString();
+      persist();
+      markerReopen(place.id);
+    });
 
-  const textLabel = document.createElement("label");
-  textLabel.textContent = "Text";
-  const textarea = document.createElement("textarea");
-  textarea.value = block.body || "";
-  textarea.addEventListener("input", () => {
-    block.body = textarea.value;
-    place.updatedAt = new Date().toISOString();
-    persist();
-  });
-  textLabel.append(textarea);
+    const body = document.createElement("div");
+    body.className = "block-body";
+    body.hidden = !block.expanded;
 
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "danger secondary";
-  remove.textContent = "Ta bort block";
-  remove.addEventListener("click", () => {
-    place.blocks = place.blocks.filter((item) => item.id !== block.id);
-    place.updatedAt = new Date().toISOString();
-    persist();
-    renderMarkers();
-    selectPlace(place.id);
-  });
+    const titleLabel = document.createElement("label");
+    titleLabel.textContent = "Rubrik";
+    const titleInput = document.createElement("input");
+    titleInput.value = block.title || "";
+    titleInput.placeholder = "Rubrik";
+    titleInput.addEventListener("input", () => {
+      block.title = titleInput.value;
+      place.updatedAt = new Date().toISOString();
+      persist();
+      summary.querySelector(".block-title").textContent = block.title || "Anteckning";
+    });
+    titleLabel.append(titleInput);
 
-  body.append(titleLabel, textLabel, remove);
-  article.append(summary, body);
-  return article;
+    const textLabel = document.createElement("label");
+    textLabel.textContent = "Text";
+    const textarea = document.createElement("textarea");
+    textarea.value = block.body || "";
+    textarea.placeholder = block.title === "Översikt" ? overviewPlaceholder : (blockPlaceholders[block.title] || "Skriv anteckning här.");
+    textarea.addEventListener("input", () => updateBlock(place, block, { body: textarea.value }));
+    textLabel.append(textarea);
+
+    const actions = document.createElement("div");
+    actions.className = "block-actions";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary danger-text";
+    remove.textContent = "Ta bort block";
+    remove.addEventListener("click", () => {
+      place.blocks = place.blocks.filter((item) => item.id !== block.id);
+      place.updatedAt = new Date().toISOString();
+      persist();
+      markerReopen(place.id);
+    });
+    actions.append(remove);
+
+    body.append(titleLabel, textLabel, actions);
+    article.append(summary, body);
+    root.append(article);
+  });
 }
 
-function stopElementPropagation(element) {
-  if (!element) return;
-  if (window.L?.DomEvent) {
-    L.DomEvent.disableClickPropagation(element);
-    L.DomEvent.disableScrollPropagation(element);
+function markerReopen(id) {
+  const marker = state.markers.get(id);
+  const place = state.places.find((item) => item.id === id);
+  if (!marker || !place) return;
+  marker.setPopupContent(buildPopup(place));
+}
+
+function startMoveMode(id) {
+  state.moveModeId = id;
+  for (const [markerId, marker] of state.markers.entries()) {
+    if (markerId === id) marker.dragging.enable();
+    else marker.dragging.disable();
   }
-  ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend", "contextmenu"].forEach((eventName) => {
-    element.addEventListener(eventName, (event) => event.stopPropagation());
+  showSaveStatus("Flyttläge: dra punkten");
+}
+
+function stopMoveMode() {
+  state.moveModeId = null;
+  for (const marker of state.markers.values()) {
+    if (marker.dragging) marker.dragging.disable();
+  }
+}
+
+function renderStars(buttons, priority) {
+  buttons.forEach((button) => {
+    const value = Number(button.dataset.priority);
+    button.textContent = value <= priority ? "★" : "☆";
+    button.classList.toggle("selected", value <= priority);
   });
 }
 
-function stopPopupPropagation(marker) {
-  const popupElement = marker.getPopup()?.getElement?.();
-  stopElementPropagation(popupElement);
-}
-
-function getTextOnlyPlaces() {
-  return state.places.map((place) => ({
-    id: place.id,
-    title: place.title,
-    lat: place.lat,
-    lng: place.lng,
-    priority: place.priority,
-    tags: place.tags || [],
-    blocks: (place.blocks || []).map((block) => ({
-      id: block.id,
-      title: block.title,
-      body: block.body,
-      expanded: Boolean(block.expanded)
-    })),
-    createdAt: place.createdAt,
-    updatedAt: place.updatedAt
-  }));
-}
-
-function makeExportPayload() {
-  return {
-    type: "scoutmap-text-export",
-    version: 1,
+function exportPlaces() {
+  const payload = {
+    type: "scoutmap-export",
+    version: 2,
     exportedAt: new Date().toISOString(),
-    places: getTextOnlyPlaces()
+    places: state.places.map(stripImages)
   };
-}
 
-function exportTextFile() {
-  const payload = makeExportPayload();
-  const text = JSON.stringify(payload, null, 2);
-  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const date = new Date().toISOString().slice(0, 10);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `scoutmap-${date}.json`;
-  document.body.append(a);
-  a.click();
-  a.remove();
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `scoutmap-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
   URL.revokeObjectURL(url);
-  showSaveStatus(`Exporterade ${payload.places.length} platser`);
+  showSaveStatus("Exporterad");
 }
 
-async function importFile(event) {
+function importPlacesFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  try {
-    const text = await file.text();
-    importText(text);
-    event.target.value = "";
-  } catch (error) {
-    showSyncStatus(`Kunde inte läsa filen: ${error?.message || error}`);
-  }
-}
 
-function importPastedText() {
-  const text = elements.importPaste?.value || "";
-  importText(text);
-}
-
-function importText(text) {
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    showSyncStatus("Importtexten är inte giltig JSON.");
-    return;
-  }
-
-  if (!payload || !Array.isArray(payload.places)) {
-    showSyncStatus("Filen verkar inte vara en Scoutmap-export.");
-    return;
-  }
-
-  const result = mergePlaces(payload.places);
-  persist();
-  renderMarkers();
-  showSyncStatus(`Importerade ${result.added} nya, uppdaterade ${result.updated}, hoppade över ${result.skipped} · Sparat ${formatTime(new Date().toISOString())}`);
-  showSaveStatus(`Sparat ${formatTime(new Date().toISOString())}`);
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result));
+      const importedPlaces = normalizePlaces(Array.isArray(parsed) ? parsed : parsed.places || []);
+      const result = mergePlaces(importedPlaces);
+      persist();
+      renderMarkers();
+      showSaveStatus(`Importerade ${result.added}, uppdaterade ${result.updated} · Sparat ${timeStamp()}`);
+    } catch (error) {
+      showSaveStatus(`Importfel: ${error.message}`);
+    } finally {
+      elements.importInput.value = "";
+    }
+  };
+  reader.readAsText(file);
 }
 
 function mergePlaces(importedPlaces) {
   let added = 0;
   let updated = 0;
-  let skipped = 0;
-  const localById = new Map(state.places.map((place) => [place.id, place]));
+  const byId = new Map(state.places.map((place) => [place.id, place]));
 
-  importedPlaces.map(normalizePlace).forEach((incoming) => {
-    const existing = localById.get(incoming.id);
+  importedPlaces.forEach((incoming) => {
+    const existing = byId.get(incoming.id);
     if (!existing) {
-      state.places.unshift(incoming);
-      localById.set(incoming.id, incoming);
+      state.places.push(incoming);
+      byId.set(incoming.id, incoming);
       added += 1;
       return;
     }
-    const existingTime = Date.parse(existing.updatedAt || existing.createdAt || "") || 0;
-    const incomingTime = Date.parse(incoming.updatedAt || incoming.createdAt || "") || 0;
-    if (incomingTime > existingTime) {
+
+    if (new Date(incoming.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
       Object.assign(existing, incoming);
       updated += 1;
-    } else {
-      skipped += 1;
     }
   });
-  return { added, updated, skipped };
+
+  state.places.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return { added, updated };
 }
 
-function normalizePlaces(places) {
-  return Array.isArray(places) ? places.map(normalizePlace).filter(Boolean) : [];
+function normalizePlaces(rawPlaces) {
+  return (Array.isArray(rawPlaces) ? rawPlaces : []).map(normalizePlace).filter(Boolean);
 }
 
-function normalizePlace(place) {
+function normalizePlace(raw) {
+  if (!raw || !Number.isFinite(Number(raw.lat)) || !Number.isFinite(Number(raw.lng))) return null;
   const now = new Date().toISOString();
-  const safe = place || {};
-  const blocks = Array.isArray(safe.blocks) && safe.blocks.length
-    ? safe.blocks.map((block) => ({
+  const blocks = Array.isArray(raw.blocks) && raw.blocks.length
+    ? raw.blocks.map((block) => ({
         id: block.id || newId(),
         title: block.title || "Anteckning",
         body: block.body || "",
-        expanded: Boolean(block.expanded)
+        expanded: false
       }))
-    : [{
-        id: newId(),
-        title: overviewTemplate.title,
-        body: overviewTemplate.body,
-        expanded: true
-      }];
+    : [{ id: newId(), title: "Översikt", body: "", expanded: false }];
 
   return {
-    id: safe.id || newId(),
-    title: safe.title || "Namnlös plats",
-    lat: Number.isFinite(Number(safe.lat)) ? Number(safe.lat) : defaultCenter[0],
-    lng: Number.isFinite(Number(safe.lng)) ? Number(safe.lng) : defaultCenter[1],
-    priority: clamp(Number(safe.priority) || 3, 1, 5),
-    tags: Array.isArray(safe.tags) ? safe.tags.map(String).filter(Boolean) : parseTags(safe.tags || ""),
+    id: raw.id || newId(),
+    title: raw.title || "Ny scoutingplats",
+    lat: Number(raw.lat),
+    lng: Number(raw.lng),
+    priority: clampPriority(raw.priority),
     images: [],
     blocks,
-    createdAt: safe.createdAt || now,
-    updatedAt: safe.updatedAt || safe.createdAt || now
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || now
   };
+}
+
+function stripImages(place) {
+  return {
+    ...place,
+    images: [],
+    blocks: place.blocks.map((block) => ({ ...block, expanded: false }))
+  };
+}
+
+function clampPriority(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 3;
+  return Math.min(5, Math.max(1, Math.round(number)));
 }
 
 function persist(showStatus = true) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.places));
-    if (showStatus) showSaveStatus(`Sparat ${formatTime(new Date().toISOString())}`);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.places.map(stripImages)));
+    if (showStatus) showSaveStatus(`Sparat ${timeStamp()}`);
   } catch (error) {
-    showSaveStatus("Kunde inte spara lokalt. LocalStorage kan vara fullt.");
+    showSaveStatus(`Sparfel: ${error.message}`);
   }
 }
 
@@ -574,44 +509,6 @@ function loadPlaces() {
   } catch {
     return [];
   }
-}
-
-function showSaveStatus(message) {
-  if (elements.saveStatus) elements.saveStatus.textContent = message;
-}
-
-function showSyncStatus(message) {
-  if (elements.syncStatus) elements.syncStatus.textContent = message;
-}
-
-function parseTags(value) {
-  if (Array.isArray(value)) return value.map(String).filter(Boolean);
-  return String(value || "")
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function renderStars(value) {
-  const n = clamp(Number(value) || 0, 1, 5);
-  return "★".repeat(n) + "☆".repeat(5 - n);
-}
-
-function formatTime(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "nu";
-  return date.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function newId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function getCurrentPosition() {
@@ -626,4 +523,17 @@ function getCurrentPosition() {
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
     );
   });
+}
+
+function showSaveStatus(text) {
+  if (elements.saveStatus) elements.saveStatus.textContent = text;
+}
+
+function timeStamp() {
+  return new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+}
+
+function newId() {
+  if (crypto?.randomUUID) return crypto.randomUUID();
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

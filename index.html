@@ -9,49 +9,54 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="map-wrap" aria-label="Karta">
-        <div id="map"></div>
+      <div id="map" aria-label="Karta"></div>
 
-        <div class="topbar">
-          <div>
-            <p class="eyebrow">Klätterscouting</p>
-            <h1>Scoutmap</h1>
-            <div class="save-status" id="saveStatus" aria-live="polite">Sparat lokalt</div>
-          </div>
-          <button class="icon-button" id="locateButton" type="button" title="Gå till min position" aria-label="Gå till min position">
-            <span aria-hidden="true">⌖</span>
-          </button>
+      <div class="topbar" id="topbar">
+        <div class="brand">
+          <p class="eyebrow">Klätterscouting</p>
+          <h1>Scoutmap</h1>
+          <p class="save-status" id="saveStatus">Sparat lokalt</p>
         </div>
+        <button class="icon-button" id="locateButton" type="button" title="Gå till min position" aria-label="Gå till min position">⌖</button>
+      </div>
 
-        <div class="map-actions">
-          <button id="newAtCenterButton" type="button">Ny plats här</button>
-          <button id="newAtMeButton" type="button">Ny vid mig</button>
-          <button id="exportButton" type="button">Exportera fil</button>
-          <button id="openImportButton" type="button" class="secondary">Importera fil</button>
-        </div>
-      </section>
+      <div class="map-actions" id="mapActions">
+        <button id="newAtCenterButton" type="button">Ny plats här</button>
+        <button id="newAtMeButton" type="button">Ny vid mig</button>
+        <button id="exportButton" type="button">Exportera</button>
+        <label class="file-button">
+          Importera
+          <input id="importInput" type="file" accept="application/json,.json">
+        </label>
+      </div>
     </main>
 
-    <section id="importPanel" class="floating-panel hidden" aria-label="Importera textfil">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow">Synk</p>
-          <h2>Importera scoutmap-fil</h2>
+    <template id="popupTemplate">
+      <article class="place-card">
+        <header class="place-card-header">
+          <label class="title-label">
+            <span>Namn</span>
+            <input class="popup-title" type="text" placeholder="Namn på platsen">
+          </label>
+        </header>
+
+        <div class="priority-row" aria-label="Prioritet">
+          <button type="button" class="star" data-priority="1">☆</button>
+          <button type="button" class="star" data-priority="2">☆</button>
+          <button type="button" class="star" data-priority="3">☆</button>
+          <button type="button" class="star" data-priority="4">☆</button>
+          <button type="button" class="star" data-priority="5">☆</button>
         </div>
-        <button id="closeImportButton" type="button" class="secondary">Stäng</button>
-      </div>
-      <p class="muted">Välj en exporterad Scoutmap-textfil. Importen slår ihop filens platser med det som redan finns lokalt.</p>
-      <label>
-        Scoutmap-fil
-        <input id="importFileInput" type="file" accept="application/json,.json,.txt">
-      </label>
-      <label>
-        Eller klistra in exporttext
-        <textarea id="importPasteInput" placeholder="Klistra in exporterad Scoutmap-text här"></textarea>
-      </label>
-      <button id="pasteImportButton" type="button">Importera inklistrat</button>
-      <div id="syncStatus" class="sync-status" aria-live="polite"></div>
-    </section>
+
+        <div class="block-toolbar"></div>
+        <div class="popup-blocks"></div>
+
+        <footer class="place-card-actions">
+          <button type="button" class="secondary move-button">Flytta punkt</button>
+          <button type="button" class="danger delete-button">Ta bort punkt</button>
+        </footer>
+      </article>
+    </template>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
