@@ -85,7 +85,7 @@ map.on("click", (event) => createPlace(event.latlng.lat, event.latlng.lng));
 function createPlace(lat, lng) {
   const now = new Date().toISOString();
   const place = normalizePlace({
-    id: crypto.randomUUID(),
+    id: newId(),
     title: "Ny scoutingplats",
     lat,
     lng,
@@ -93,7 +93,7 @@ function createPlace(lat, lng) {
     tags: [],
     images: [],
     blocks: templates.map((template, index) => ({
-      id: crypto.randomUUID(),
+      id: newId(),
       title: template.title,
       body: template.body,
       expanded: index === 0
@@ -112,7 +112,12 @@ function createPlace(lat, lng) {
 function selectPlace(id) {
   state.selectedId = id;
   const marker = state.markers.get(id);
-  if (marker) marker.openPopup();
+  if (!marker) return;
+  try {
+    marker.openPopup();
+  } catch (error) {
+    console.error("Kunde inte öppna popup", error);
+  }
 }
 
 function getSelected() {
@@ -258,7 +263,7 @@ function buildPopup(place) {
     button.textContent = `+ ${template.title}`;
     button.addEventListener("click", () => {
       place.blocks.push({
-        id: crypto.randomUUID(),
+        id: newId(),
         title: template.title,
         body: template.body,
         expanded: true
@@ -372,7 +377,7 @@ function showQrExport() {
   };
   const encoded = encodePayload(payload);
   const checksum = String(hashString(encoded));
-  const syncId = crypto.randomUUID();
+  const syncId = newId();
   const chunks = chunkString(encoded, QR_CHUNK_SIZE);
 
   chunks.forEach((chunk, index) => {
@@ -563,7 +568,7 @@ function normalizePlace(place) {
   const now = new Date().toISOString();
   const safe = place || {};
   return {
-    id: safe.id || crypto.randomUUID(),
+    id: safe.id || newId(),
     title: safe.title || "Namnlös plats",
     lat: Number.isFinite(Number(safe.lat)) ? Number(safe.lat) : defaultCenter[0],
     lng: Number.isFinite(Number(safe.lng)) ? Number(safe.lng) : defaultCenter[1],
@@ -571,7 +576,7 @@ function normalizePlace(place) {
     tags: Array.isArray(safe.tags) ? safe.tags.map(String).filter(Boolean) : parseTags(safe.tags || ""),
     images: [],
     blocks: Array.isArray(safe.blocks) ? safe.blocks.map((block) => ({
-      id: block.id || crypto.randomUUID(),
+      id: block.id || newId(),
       title: block.title || "Anteckning",
       body: block.body || "",
       expanded: Boolean(block.expanded)
@@ -650,6 +655,13 @@ function hashString(value) {
     hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return hash >>> 0;
+}
+
+function newId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function getCurrentPosition() {
