@@ -54,6 +54,12 @@ const elements = {
   importInput: document.querySelector("#importInput")
 };
 
+const editorOverlay = document.createElement("div");
+editorOverlay.className = "editor-overlay hidden";
+editorOverlay.addEventListener("click", (event) => event.stopPropagation());
+editorOverlay.addEventListener("pointerdown", (event) => event.stopPropagation());
+document.querySelector(".app-shell").append(editorOverlay);
+
 window.addEventListener("error", (event) => showSaveStatus(`Fel: ${event.message}`));
 
 persist(false);
@@ -76,19 +82,8 @@ map.on("click", (event) => {
   createPlace(event.latlng.lat, event.latlng.lng);
 });
 
-map.on("popupopen", () => {
-  state.popupOpen = true;
-  document.body.classList.add("popup-is-open");
-});
-
-map.on("popupclose", () => {
-  state.popupOpen = false;
-  document.body.classList.remove("popup-is-open");
-  state.selectedId = null;
-  // Leaflet can close a popup and let the same pointer event continue to the map.
-  // This guard makes the first outside click close only, never create a new point.
-  state.suppressMapCreateUntil = Date.now() + 350;
-});
+map.on("move zoom resize", positionActiveOverlay);
+window.addEventListener("resize", positionActiveOverlay);
 
 elements.newAtCenter.addEventListener("click", () => {
   const center = map.getCenter();
@@ -149,14 +144,17 @@ function openPlace(id) {
   place.blocks.forEach((block) => {
     block.expanded = false;
   });
-
-  const marker = state.markers.get(id);
-  if (marker) marker.openPopup();
+  renderEditorOverlay(place);
+  document.body.classList.add("popup-is-open");
 }
 
 function closeActivePopup() {
   state.suppressMapCreateUntil = Date.now() + 250;
-  map.closePopup();
+  state.selectedId = null;
+  state.popupOpen = false;
+  editorOverlay.classList.add("hidden");
+  editorOverlay.innerHTML = "";
+  document.body.classList.remove("popup-is-open");
 }
 
 function updatePlace(place, patch, { refresh = false } = {}) {
@@ -190,16 +188,6 @@ function renderMarkers() {
       autoPan: true
     }).addTo(map);
 
-    marker.bindPopup(() => buildPopup(place), {
-      maxWidth: 420,
-      minWidth: 280,
-      autoPan: true,
-      autoPanPaddingTopLeft: [18, 18],
-      autoPanPaddingBottomRight: [18, 18],
-      offset: [190, -4],
-      className: "top-left-popup"
-    });
-
     marker.on("click", (event) => {
       L.DomEvent.stop(event);
       if (state.moveModeId) return;
@@ -226,9 +214,41 @@ function refreshMarker(id) {
   if (!place || !marker) return;
 
   marker.setLatLng([place.lat, place.lng]);
-  if (marker.isPopupOpen()) {
-    marker.setPopupContent(buildPopup(place));
-  }
+  if (state.selectedId === id) renderEditorOverlay(place);
+}
+
+function renderEditorOverlay(place) {
+  state.popupOpen = true;
+  editorOverlay.innerHTML = "";
+  editorOverlay.classList.remove("hidden");
+  editorOverlay.append(buildPopup(place));
+  positionActiveOverlay();
+}
+
+function positionActiveOverlay() {
+  if (!state.selectedId || editorOverlay.classList.contains("hidden")) return;
+  const place = state.places.find((item) => item.id === state.selectedId);
+  if (!place) return;
+
+  const point = map.latLngToContainerPoint([place.lat, place.lng]);
+  const mapSize = map.getSize();
+  const margin = window.innerWidth <= 680 ? 16 : 18;
+
+  // Measure after content has been rendered.
+  const width = editorOverlay.offsetWidth || Math.min(420, window.innerWidth - 42);
+  const height = editorOverlay.offsetHeight || 320;
+
+  let left = point.x - 18;
+  let top = point.y + 16;
+
+  left = Math.max(margin, Math.min(left, mapSize.x - width - margin));
+  top = Math.max(margin, Math.min(top, mapSize.y - height - margin));
+
+  const pipLeft = Math.max(18, Math.min(width - 24, point.x - left));
+
+  editorOverlay.style.left = `${left}px`;
+  editorOverlay.style.top = `${top}px`;
+  editorOverlay.style.setProperty("--pip-left", `${pipLeft}px`);
 }
 
 function buildPopup(place) {
@@ -246,6 +266,13 @@ function buildPopup(place) {
   const blocksRoot = node.querySelector(".popup-blocks");
   const moveButton = node.querySelector(".move-button");
   const deleteButton = node.querySelector(".delete-button");
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "overlay-close";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Stäng");
+  closeButton.addEventListener("click", closeActivePopup);
+  node.append(closeButton);
 
   titleInput.value = place.title || "";
   titleInput.addEventListener("input", () => updatePlace(place, { title: titleInput.value }));
@@ -298,7 +325,7 @@ function renderBlocks(place, root) {
 
   place.blocks.forEach((block) => {
     const article = document.createElement("article");
-    article.className = "block";
+    article.className = `block${block.expanded ? " is-expanded" : ""}`;
 
     const summary = document.createElement("button");
     summary.type = "button";
@@ -360,16 +387,16 @@ function renderBlocks(place, root) {
 }
 
 function markerReopen(id) {
-  const marker = state.markers.get(id);
   const place = state.places.find((item) => item.id === id);
-  if (!marker || !place) return;
-  marker.setPopupContent(buildPopup(place));
+  if (!place) return;
+  if (state.selectedId === id) renderEditorOverlay(place);
 }
 
 function startMoveMode(id) {
   state.moveModeId = id;
   state.suppressMapCreateUntil = Date.now() + 350;
-  map.closePopup();
+  closeActivePopup();
+  state.moveModeId = id;
   showSaveStatus("Flyttläge: klicka på ny plats");
 }
 

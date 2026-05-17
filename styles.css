@@ -322,3 +322,71 @@ textarea::placeholder { color: #8a948b; opacity: 0.82; }
     grid-template-columns: 1fr;
   }
 }
+
+/* Custom map-anchored editor. Replaces Leaflet popup positioning so the coordinate
+   is the small pip near the top-left of the card, not the card bottom. */
+.editor-overlay {
+  --pip-left: 22px;
+  position: absolute;
+  z-index: 700;
+  width: min(420px, calc(100vw - 42px));
+}
+
+.editor-overlay::before {
+  border-bottom: 15px solid var(--panel);
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  content: "";
+  left: calc(var(--pip-left) - 10px);
+  position: absolute;
+  top: -14px;
+  width: 0;
+  height: 0;
+  filter: drop-shadow(0 -2px 1px rgba(33, 37, 32, 0.08));
+}
+
+.editor-overlay .place-card {
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(213, 221, 215, 0.9);
+}
+
+.overlay-close {
+  align-items: center;
+  background: rgba(229, 233, 230, 0.95);
+  color: var(--stone);
+  display: inline-flex;
+  font-size: 1.35rem;
+  height: 34px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 34px;
+  z-index: 25;
+}
+
+.overlay-close:hover {
+  background: #d9dfdb;
+}
+
+.block:not(.is-expanded) .block-body {
+  display: none !important;
+}
+
+@media (max-width: 680px) {
+  .editor-overlay {
+    width: calc(100vw - 42px);
+  }
+
+  .editor-overlay .place-card {
+    max-height: calc(100vh - 84px);
+  }
+}
+
+/* Old Leaflet-popup pip overrides are kept harmless if cached markup exists. */
+.top-left-popup .place-card::before,
+.top-left-popup .place-card::after {
+  display: none !important;
+}
