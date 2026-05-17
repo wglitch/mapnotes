@@ -1,5 +1,4 @@
 const STORAGE_KEY = "scoutmap.places.v1";
-const QR_CHUNK_SIZE = 450;
 
 window.addEventListener("error", (event) => {
   const target = document.querySelector("#saveStatus");
@@ -13,13 +12,19 @@ window.addEventListener("unhandledrejection", (event) => {
   console.error(event.reason);
 });
 
+const overviewTemplate = {
+  title: "Översikt",
+  body: "Kort helhetsbild: potential, access, bergkvalitet och vad som bör kollas nästa gång."
+};
+
 const templates = [
   { title: "Potential", body: "Vad kan det här bli? Linjer, höjd, mängd klättring, känsla." },
   { title: "Access", body: "Väg in, stig, markägare, grindar, känsliga passager." },
   { title: "Berg", body: "Kvalitet, typ av klippa, sprickor, block, behov av rensning." },
   { title: "Risker", body: "Lös sten, landningar, fallzoner, vatten, privat mark eller naturvärden." },
   { title: "Parkering", body: "Var går det att ställa bilen utan att störa?" },
-  { title: "Nästa steg", body: "Vad behöver kollas nästa gång?" }
+  { title: "Nästa steg", body: "Vad behöver kollas nästa gång?" },
+  { title: "Reselogistik", body: "Boende, mat, vatten, vägval och annat som hör till en längre scoutingresa." }
 ];
 
 const defaultCenter = [59.3293, 18.0686];
@@ -33,28 +38,22 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 const state = {
   places: normalizePlaces(loadPlaces()),
   selectedId: null,
-  markers: new Map(),
-  qrParts: new Map(),
-  scanner: null
+  markers: new Map()
 };
 
 const elements = {
   locate: document.querySelector("#locateButton"),
   newAtCenter: document.querySelector("#newAtCenterButton"),
   newAtMe: document.querySelector("#newAtMeButton"),
-  showQr: document.querySelector("#showQrButton"),
+  exportButton: document.querySelector("#exportButton"),
   openImport: document.querySelector("#openImportButton"),
-  saveStatus: document.querySelector("#saveStatus"),
-  syncStatus: document.querySelector("#syncStatus"),
-  qrExportPanel: document.querySelector("#qrExportPanel"),
-  closeQr: document.querySelector("#closeQrButton"),
-  qrCodes: document.querySelector("#qrCodes"),
-  qrImportPanel: document.querySelector("#qrImportPanel"),
+  importPanel: document.querySelector("#importPanel"),
   closeImport: document.querySelector("#closeImportButton"),
-  startScan: document.querySelector("#startScanButton"),
-  stopScan: document.querySelector("#stopScanButton"),
-  qrPaste: document.querySelector("#qrPasteInput"),
-  pasteImport: document.querySelector("#pasteImportButton")
+  importFile: document.querySelector("#importFileInput"),
+  importPaste: document.querySelector("#importPasteInput"),
+  pasteImport: document.querySelector("#pasteImportButton"),
+  saveStatus: document.querySelector("#saveStatus"),
+  syncStatus: document.querySelector("#syncStatus")
 };
 
 persist(false);
@@ -81,16 +80,11 @@ if (elements.locate) elements.locate.addEventListener("click", () => {
   });
 });
 
-if (elements.showQr) elements.showQr.addEventListener("click", showQrExport);
-if (elements.openImport) elements.openImport.addEventListener("click", () => elements.qrImportPanel?.classList.remove("hidden"));
-if (elements.closeQr) elements.closeQr.addEventListener("click", () => elements.qrExportPanel?.classList.add("hidden"));
-if (elements.closeImport) elements.closeImport.addEventListener("click", () => {
-  stopScanner();
-  elements.qrImportPanel?.classList.add("hidden");
-});
-if (elements.startScan) elements.startScan.addEventListener("click", startScanner);
-if (elements.stopScan) elements.stopScan.addEventListener("click", stopScanner);
-if (elements.pasteImport) elements.pasteImport.addEventListener("click", importPastedQrText);
+if (elements.exportButton) elements.exportButton.addEventListener("click", exportTextFile);
+if (elements.openImport) elements.openImport.addEventListener("click", () => elements.importPanel?.classList.remove("hidden"));
+if (elements.closeImport) elements.closeImport.addEventListener("click", () => elements.importPanel?.classList.add("hidden"));
+if (elements.importFile) elements.importFile.addEventListener("change", importFile);
+if (elements.pasteImport) elements.pasteImport.addEventListener("click", importPastedText);
 
 map.on("click", (event) => safeCreatePlace(event.latlng.lat, event.latlng.lng));
 
@@ -113,12 +107,12 @@ function createPlace(lat, lng) {
     priority: 3,
     tags: [],
     images: [],
-    blocks: templates.map((template, index) => ({
+    blocks: [{
       id: newId(),
-      title: template.title,
-      body: template.body,
-      expanded: index === 0
-    })),
+      title: overviewTemplate.title,
+      body: overviewTemplate.body,
+      expanded: true
+    }],
     createdAt: now,
     updatedAt: now
   });
@@ -139,10 +133,6 @@ function selectPlace(id) {
   } catch (error) {
     console.error("Kunde inte öppna popup", error);
   }
-}
-
-function getSelected() {
-  return state.places.find((place) => place.id === state.selectedId);
 }
 
 function updatePlace(place, patch = {}) {
@@ -183,7 +173,7 @@ function buildPopup(place) {
   node.className = "pin-editor";
 
   const header = document.createElement("header");
-  header.className = "pin-editor-header";
+  header.className = "pin-editor-header single";
 
   const titleInput = document.createElement("input");
   titleInput.className = "popup-title-input";
@@ -194,18 +184,7 @@ function buildPopup(place) {
     place.updatedAt = new Date().toISOString();
     persist();
   });
-
-  const deleteButton = document.createElement("button");
-  deleteButton.type = "button";
-  deleteButton.className = "icon-button danger";
-  deleteButton.textContent = "×";
-  deleteButton.title = "Ta bort plats";
-  deleteButton.addEventListener("click", () => {
-    state.places = state.places.filter((item) => item.id !== place.id);
-    persist();
-    renderMarkers();
-  });
-  header.append(titleInput, deleteButton);
+  header.append(titleInput);
 
   const meta = document.createElement("div");
   meta.className = "popup-meta-grid";
@@ -272,10 +251,6 @@ function buildPopup(place) {
   posGrid.append(latLabel, lngLabel);
   position.append(posGrid);
 
-  const blocks = document.createElement("div");
-  blocks.className = "popup-blocks-editor";
-  place.blocks.forEach((block) => blocks.append(buildBlockEditor(place, block)));
-
   const templateRow = document.createElement("div");
   templateRow.className = "template-row popup-template-row";
   templates.forEach((template) => {
@@ -297,9 +272,28 @@ function buildPopup(place) {
     templateRow.append(button);
   });
 
+  const blocks = document.createElement("div");
+  blocks.className = "popup-blocks-editor";
+  place.blocks.forEach((block) => blocks.append(buildBlockEditor(place, block)));
+
   const footer = document.createElement("footer");
   footer.className = "popup-footer";
-  footer.textContent = `Sparat lokalt · ${formatTime(place.updatedAt)}`;
+  const saved = document.createElement("span");
+  saved.textContent = `Sparat lokalt · ${formatTime(place.updatedAt)}`;
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "delete-place-button danger";
+  deleteButton.textContent = "Ta bort punkt";
+  deleteButton.title = "Tar bort hela kartpunkten";
+  deleteButton.addEventListener("click", () => {
+    const ok = window.confirm("Ta bort hela punkten? Det här går inte att ångra.");
+    if (!ok) return;
+    state.places = state.places.filter((item) => item.id !== place.id);
+    state.selectedId = null;
+    persist();
+    renderMarkers();
+  });
+  footer.append(saved, deleteButton);
 
   node.append(header, meta, position, templateRow, blocks, footer);
   return node;
@@ -385,174 +379,67 @@ function getTextOnlyPlaces() {
   }));
 }
 
-function showQrExport() {
-  if (!elements.qrExportPanel || !elements.qrCodes) return;
-  elements.qrExportPanel.classList.remove("hidden");
-  elements.qrCodes.innerHTML = "";
-
-  const payload = {
-    type: "scoutmap-sync-payload",
+function makeExportPayload() {
+  return {
+    type: "scoutmap-text-export",
     version: 1,
     exportedAt: new Date().toISOString(),
     places: getTextOnlyPlaces()
   };
-  const encoded = encodePayload(payload);
-  const checksum = String(hashString(encoded));
-  const syncId = newId();
-  const chunks = chunkString(encoded, QR_CHUNK_SIZE);
-
-  chunks.forEach((chunk, index) => {
-    const qrText = JSON.stringify({
-      type: "scoutmap-sync-part",
-      version: 1,
-      syncId,
-      partIndex: index,
-      totalParts: chunks.length,
-      checksum,
-      data: chunk
-    });
-
-    const card = document.createElement("article");
-    card.className = "qr-card";
-    const heading = document.createElement("h4");
-    heading.textContent = `Del ${index + 1} av ${chunks.length}`;
-    const qrBox = document.createElement("div");
-    qrBox.className = "qr-box";
-    const text = document.createElement("textarea");
-    text.readOnly = true;
-    text.value = qrText;
-    text.addEventListener("focus", () => text.select());
-    card.append(heading, qrBox, text);
-    elements.qrCodes.append(card);
-
-    if (window.QRCode) {
-      new QRCode(qrBox, {
-        text: qrText,
-        width: 220,
-        height: 220,
-        correctLevel: QRCode.CorrectLevel.M
-      });
-    } else {
-      qrBox.textContent = "QR-biblioteket laddades inte. Kopiera texten nedan i stället.";
-    }
-  });
-  showSyncStatus(`Skapade ${chunks.length} QR-del${chunks.length === 1 ? "" : "ar"}.`);
 }
 
-function importPastedQrText() {
-  const raw = elements.qrPaste?.value || "";
-  const parts = raw
-    .split(/\n\s*\n|\n(?=\{)/g)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  if (!parts.length) {
-    showSyncStatus("Klistra in minst en QR-text först.");
-    return;
-  }
-
-  parts.forEach(handleScannedText);
+function exportTextFile() {
+  const payload = makeExportPayload();
+  const text = JSON.stringify(payload, null, 2);
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const date = new Date().toISOString().slice(0, 10);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `scoutmap-${date}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showSaveStatus(`Exporterade ${payload.places.length} platser`);
 }
 
-async function startScanner() {
-  const readerId = "qrReader";
-  if (!document.querySelector(`#${readerId}`)) return;
-  if (!window.Html5Qrcode) {
-    showSyncStatus("QR-kamerabiblioteket laddades inte. Använd klistra in-fältet.");
-    return;
-  }
-  if (state.scanner) return;
-
+async function importFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
   try {
-    state.scanner = new Html5Qrcode(readerId);
-    await state.scanner.start(
-      { facingMode: "environment" },
-      { fps: 8, qrbox: { width: 240, height: 240 } },
-      (decodedText) => handleScannedText(decodedText),
-      () => {}
-    );
-    showSyncStatus("Kameran är igång. Skanna QR-delarna i valfri ordning.");
+    const text = await file.text();
+    importText(text);
+    event.target.value = "";
   } catch (error) {
-    state.scanner = null;
-    showSyncStatus(`Kunde inte starta kameran: ${error?.message || error}`);
+    showSyncStatus(`Kunde inte läsa filen: ${error?.message || error}`);
   }
 }
 
-async function stopScanner() {
-  if (!state.scanner) return;
-  try {
-    await state.scanner.stop();
-    await state.scanner.clear();
-  } catch {}
-  state.scanner = null;
-  showSyncStatus("Kameran stoppad.");
+function importPastedText() {
+  const text = elements.importPaste?.value || "";
+  importText(text);
 }
 
-function handleScannedText(text) {
-  let part;
-  try {
-    part = JSON.parse(text);
-  } catch {
-    showSyncStatus("QR-texten var inte giltig JSON.");
-    return;
-  }
-
-  if (part.type !== "scoutmap-sync-part") {
-    showSyncStatus("Det här verkar inte vara en Scoutmap-QR.");
-    return;
-  }
-
-  if (!state.qrParts.has(part.syncId)) state.qrParts.set(part.syncId, new Map());
-  const syncParts = state.qrParts.get(part.syncId);
-  syncParts.set(Number(part.partIndex), part);
-
-  const scanned = syncParts.size;
-  showSyncStatus(`Skannat ${scanned} av ${part.totalParts} delar.`);
-
-  if (scanned >= Number(part.totalParts)) {
-    completeImport(part.syncId);
-  }
-}
-
-function completeImport(syncId) {
-  const parts = state.qrParts.get(syncId);
-  if (!parts) return;
-  const ordered = [...parts.values()].sort((a, b) => Number(a.partIndex) - Number(b.partIndex));
-  const totalParts = Number(ordered[0].totalParts);
-  if (ordered.length !== totalParts) return;
-
-  for (let i = 0; i < totalParts; i += 1) {
-    if (Number(ordered[i].partIndex) !== i) {
-      showSyncStatus("QR-delarna kunde inte sättas ihop. Någon del saknas eller är trasig.");
-      return;
-    }
-  }
-
-  const encoded = ordered.map((part) => part.data).join("");
-  const checksum = String(hashString(encoded));
-  if (checksum !== String(ordered[0].checksum)) {
-    showSyncStatus("Checksum stämmer inte. Importen avbröts.");
-    return;
-  }
-
+function importText(text) {
   let payload;
   try {
-    payload = decodePayload(encoded);
+    payload = JSON.parse(text);
   } catch {
-    showSyncStatus("Kunde inte läsa QR-paketet efter hopsättning.");
+    showSyncStatus("Importtexten är inte giltig JSON.");
     return;
   }
 
-  if (payload.type !== "scoutmap-sync-payload" || !Array.isArray(payload.places)) {
-    showSyncStatus("QR-paketet har fel format.");
+  if (!payload || !Array.isArray(payload.places)) {
+    showSyncStatus("Filen verkar inte vara en Scoutmap-export.");
     return;
   }
 
   const result = mergePlaces(payload.places);
   persist();
   renderMarkers();
-  state.qrParts.delete(syncId);
   showSyncStatus(`Importerade ${result.added} nya, uppdaterade ${result.updated}, hoppade över ${result.skipped} · Sparat ${formatTime(new Date().toISOString())}`);
+  showSaveStatus(`Sparat ${formatTime(new Date().toISOString())}`);
 }
 
 function mergePlaces(importedPlaces) {
@@ -588,6 +475,20 @@ function normalizePlaces(places) {
 function normalizePlace(place) {
   const now = new Date().toISOString();
   const safe = place || {};
+  const blocks = Array.isArray(safe.blocks) && safe.blocks.length
+    ? safe.blocks.map((block) => ({
+        id: block.id || newId(),
+        title: block.title || "Anteckning",
+        body: block.body || "",
+        expanded: Boolean(block.expanded)
+      }))
+    : [{
+        id: newId(),
+        title: overviewTemplate.title,
+        body: overviewTemplate.body,
+        expanded: true
+      }];
+
   return {
     id: safe.id || newId(),
     title: safe.title || "Namnlös plats",
@@ -596,12 +497,7 @@ function normalizePlace(place) {
     priority: clamp(Number(safe.priority) || 3, 1, 5),
     tags: Array.isArray(safe.tags) ? safe.tags.map(String).filter(Boolean) : parseTags(safe.tags || ""),
     images: [],
-    blocks: Array.isArray(safe.blocks) ? safe.blocks.map((block) => ({
-      id: block.id || newId(),
-      title: block.title || "Anteckning",
-      body: block.body || "",
-      expanded: Boolean(block.expanded)
-    })) : [],
+    blocks,
     createdAt: safe.createdAt || now,
     updatedAt: safe.updatedAt || safe.createdAt || now
   };
@@ -653,29 +549,6 @@ function formatTime(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-function chunkString(value, size) {
-  const chunks = [];
-  for (let i = 0; i < value.length; i += size) chunks.push(value.slice(i, i + size));
-  return chunks.length ? chunks : [""];
-}
-
-function encodePayload(payload) {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-}
-
-function decodePayload(encoded) {
-  return JSON.parse(decodeURIComponent(escape(atob(encoded))));
-}
-
-function hashString(value) {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-  }
-  return hash >>> 0;
 }
 
 function newId() {

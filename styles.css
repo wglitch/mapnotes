@@ -238,3 +238,34 @@ h2 { font-size: 1.05rem; margin-bottom: 4px; }
   .topbar { left: 20px; right: auto; width: 330px; }
   .map-actions { grid-template-columns: auto auto auto auto; left: 20px; right: auto; }
 }
+
+.pin-editor-header.single {
+  grid-template-columns: 1fr;
+}
+
+.popup-footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.delete-place-button {
+  min-height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.panel-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+#importPasteInput {
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
