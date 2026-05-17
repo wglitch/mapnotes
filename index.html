@@ -11,136 +11,59 @@
     <main class="app-shell">
       <section class="map-wrap" aria-label="Karta">
         <div id="map"></div>
+
         <div class="topbar">
           <div>
             <p class="eyebrow">Klätterscouting</p>
             <h1>Scoutmap</h1>
+            <div class="save-status" id="saveStatus" aria-live="polite">Sparat lokalt</div>
           </div>
           <button class="icon-button" id="locateButton" type="button" title="Gå till min position" aria-label="Gå till min position">
             <span aria-hidden="true">⌖</span>
           </button>
         </div>
+
         <div class="map-actions">
           <button id="newAtCenterButton" type="button">Ny plats här</button>
           <button id="newAtMeButton" type="button">Ny vid mig</button>
+          <button id="showQrButton" type="button">Dela QR</button>
+          <button id="openImportButton" type="button" class="secondary">Importera QR</button>
         </div>
       </section>
-
-      <aside class="place-panel" id="placePanel" aria-label="Platsdetaljer">
-        <div class="panel-empty" id="emptyState">
-          <p class="eyebrow">Ingen plats vald</p>
-          <h2>Tryck på kartan eller skapa en ny punkt.</h2>
-          <p>Spara potential, access, bergkvalitet, bilder och nästa steg medan du är ute.</p>
-        </div>
-
-        <form class="editor hidden" id="placeForm">
-          <header class="panel-header">
-            <div>
-              <p class="eyebrow">Vald plats</p>
-              <input id="titleInput" class="title-input" type="text" placeholder="Namn på platsen" aria-label="Namn på platsen">
-            </div>
-            <button class="icon-button danger" id="deleteButton" type="button" title="Ta bort plats" aria-label="Ta bort plats">
-              <span aria-hidden="true">×</span>
-            </button>
-          </header>
-
-          <div class="save-status" id="saveStatus" aria-live="polite">Inte sparat ännu</div>
-
-          <div class="meta-grid">
-            <label>
-              Latitud
-              <input id="latInput" type="number" step="0.000001">
-            </label>
-            <label>
-              Longitud
-              <input id="lngInput" type="number" step="0.000001">
-            </label>
-          </div>
-
-          <div class="meta-grid">
-            <label>
-              Prioritet
-              <select id="priorityInput" aria-label="Prioritet">
-                <option value="1">★☆☆☆☆ 1</option>
-                <option value="2">★★☆☆☆ 2</option>
-                <option value="3">★★★☆☆ 3</option>
-                <option value="4">★★★★☆ 4</option>
-                <option value="5">★★★★★ 5</option>
-              </select>
-            </label>
-            <label>
-              Etiketter
-              <input id="tagsInput" type="text" placeholder="t.ex. access, rensning">
-            </label>
-          </div>
-
-          <section class="sync-section">
-            <div class="section-heading">
-              <h2>Synk</h2>
-              <span class="sync-hint">Textdata via QR</span>
-            </div>
-            <div class="sync-actions">
-              <button id="showQrButton" type="button">Dela via QR</button>
-              <button id="openImportButton" type="button" class="secondary">Importera QR</button>
-            </div>
-            <div id="syncStatus" class="sync-status" aria-live="polite"></div>
-            <div id="qrExportPanel" class="qr-panel hidden">
-              <div class="qr-panel-head">
-                <h3>QR-export</h3>
-                <button id="closeQrButton" type="button" class="secondary">Stäng</button>
-              </div>
-              <p class="muted">Skanna alla delar om det blir flera QR-koder.</p>
-              <div id="qrCodes" class="qr-codes"></div>
-            </div>
-            <div id="qrImportPanel" class="qr-panel hidden">
-              <div class="qr-panel-head">
-                <h3>QR-import</h3>
-                <button id="closeImportButton" type="button" class="secondary">Stäng</button>
-              </div>
-              <div class="sync-actions">
-                <button id="startScanButton" type="button">Starta kamera</button>
-                <button id="stopScanButton" type="button" class="secondary">Stoppa kamera</button>
-              </div>
-              <div id="qrReader" class="qr-reader"></div>
-              <label>
-                Klistra in QR-data manuellt
-                <textarea id="qrPasteInput" placeholder="Klistra in en eller flera QR-texter här"></textarea>
-              </label>
-              <button id="pasteImportButton" type="button">Importera inklistrat</button>
-            </div>
-          </section>
-
-          <section class="gallery-section paused">
-            <div class="section-heading">
-              <h2>Bilder</h2>
-              <span class="sync-hint">Pausat tills bildlagring flyttas från localStorage</span>
-            </div>
-            <div class="gallery" id="gallery"></div>
-          </section>
-
-          <section class="notes-section">
-            <div class="section-heading">
-              <h2>Anteckningar</h2>
-              <button id="addBlockButton" type="button">Nytt block</button>
-            </div>
-            <div class="template-row" id="templateRow"></div>
-            <div class="blocks" id="blocks"></div>
-          </section>
-        </form>
-      </aside>
     </main>
 
-    <template id="popupTemplate">
-      <article class="pin-popup">
-        <img class="popup-image" alt="">
+    <section id="qrExportPanel" class="qr-panel floating-panel hidden" aria-label="QR-export">
+      <div class="qr-panel-head">
         <div>
-          <h3></h3>
-          <div class="popup-meta"></div>
-          <div class="popup-blocks"></div>
-          <button type="button" class="popup-open">Öppna</button>
+          <p class="eyebrow">Synk</p>
+          <h2>QR-export</h2>
         </div>
-      </article>
-    </template>
+        <button id="closeQrButton" type="button" class="secondary">Stäng</button>
+      </div>
+      <p class="muted">Skanna alla delar om det blir flera QR-koder. Bilder är inte med.</p>
+      <div id="qrCodes" class="qr-codes"></div>
+      <div id="syncStatus" class="sync-status" aria-live="polite"></div>
+    </section>
+
+    <section id="qrImportPanel" class="qr-panel floating-panel hidden" aria-label="QR-import">
+      <div class="qr-panel-head">
+        <div>
+          <p class="eyebrow">Synk</p>
+          <h2>QR-import</h2>
+        </div>
+        <button id="closeImportButton" type="button" class="secondary">Stäng</button>
+      </div>
+      <div class="sync-actions">
+        <button id="startScanButton" type="button">Starta kamera</button>
+        <button id="stopScanButton" type="button" class="secondary">Stoppa kamera</button>
+      </div>
+      <div id="qrReader" class="qr-reader"></div>
+      <label>
+        Klistra in QR-data manuellt
+        <textarea id="qrPasteInput" placeholder="Klistra in en eller flera QR-texter här"></textarea>
+      </label>
+      <button id="pasteImportButton" type="button">Importera inklistrat</button>
+    </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
