@@ -51,14 +51,27 @@ const elements = {
   newAtCenter: document.querySelector("#newAtCenterButton"),
   newAtMe: document.querySelector("#newAtMeButton"),
   exportButton: document.querySelector("#exportButton"),
-  importInput: document.querySelector("#importInput")
+  importInput: document.querySelector("#importInput"),
+  appShell: document.querySelector(".app-shell")
 };
 
 const editorOverlay = document.createElement("div");
 editorOverlay.className = "editor-overlay hidden";
 editorOverlay.addEventListener("click", (event) => event.stopPropagation());
 editorOverlay.addEventListener("pointerdown", (event) => event.stopPropagation());
-document.querySelector(".app-shell").append(editorOverlay);
+elements.appShell.append(editorOverlay);
+
+const moveOverlay = document.createElement("div");
+moveOverlay.className = "move-overlay hidden";
+moveOverlay.innerHTML = `
+  <div class="move-instruction">Placera punkten på rätt plats</div>
+  <button class="move-cancel" type="button">Avbryt flytt</button>
+`;
+moveOverlay.querySelector(".move-cancel").addEventListener("click", () => {
+  state.suppressMapCreateUntil = Date.now() + 350;
+  stopMoveMode();
+});
+elements.appShell.append(moveOverlay);
 
 window.addEventListener("error", (event) => showSaveStatus(`Fel: ${event.message}`));
 
@@ -286,7 +299,8 @@ function buildPopup(place) {
     });
   });
 
-  templates.forEach((templateItem) => {
+  const blockOptions = [{ title: "Ny", body: "" }, ...templates];
+  blockOptions.forEach((templateItem) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "template-chip";
@@ -294,9 +308,9 @@ function buildPopup(place) {
     button.addEventListener("click", () => {
       place.blocks.push({
         id: newId(),
-        title: templateItem.title,
+        title: templateItem.title === "Ny" ? "Anteckning" : templateItem.title,
         body: templateItem.body || "",
-        expanded: false
+        expanded: templateItem.title === "Ny"
       });
       place.updatedAt = new Date().toISOString();
       persist();
@@ -397,6 +411,7 @@ function startMoveMode(id) {
   state.suppressMapCreateUntil = Date.now() + 350;
   closeActivePopup();
   state.moveModeId = id;
+  renderMoveMode();
   showSaveStatus("Flyttläge: klicka på ny plats");
 }
 
@@ -420,6 +435,13 @@ function moveSelectedPlaceTo(lat, lng) {
 
 function stopMoveMode() {
   state.moveModeId = null;
+  renderMoveMode();
+}
+
+function renderMoveMode() {
+  const isMoving = Boolean(state.moveModeId);
+  document.body.classList.toggle("move-mode", isMoving);
+  moveOverlay.classList.toggle("hidden", !isMoving);
 }
 
 function renderStars(buttons, priority) {
