@@ -1,6 +1,18 @@
 const STORAGE_KEY = "scoutmap.places.v1";
 const QR_CHUNK_SIZE = 450;
 
+window.addEventListener("error", (event) => {
+  const target = document.querySelector("#saveStatus");
+  if (target) target.textContent = `JS-fel: ${event.message}`;
+  console.error(event.error || event.message);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const target = document.querySelector("#saveStatus");
+  if (target) target.textContent = `JS-fel: ${event.reason?.message || event.reason}`;
+  console.error(event.reason);
+});
+
 const templates = [
   { title: "Potential", body: "Vad kan det här bli? Linjer, höjd, mängd klättring, känsla." },
   { title: "Access", body: "Väg in, stig, markägare, grindar, känsliga passager." },
@@ -51,15 +63,15 @@ showSaveStatus("Sparat lokalt");
 
 if (elements.newAtCenter) elements.newAtCenter.addEventListener("click", () => {
   const center = map.getCenter();
-  createPlace(center.lat, center.lng);
+  safeCreatePlace(center.lat, center.lng);
 });
 
 if (elements.newAtMe) elements.newAtMe.addEventListener("click", () => {
   getCurrentPosition()
-    .then(({ latitude, longitude }) => createPlace(latitude, longitude))
+    .then(({ latitude, longitude }) => safeCreatePlace(latitude, longitude))
     .catch(() => {
       const center = map.getCenter();
-      createPlace(center.lat, center.lng);
+      safeCreatePlace(center.lat, center.lng);
     });
 });
 
@@ -80,7 +92,16 @@ if (elements.startScan) elements.startScan.addEventListener("click", startScanne
 if (elements.stopScan) elements.stopScan.addEventListener("click", stopScanner);
 if (elements.pasteImport) elements.pasteImport.addEventListener("click", importPastedQrText);
 
-map.on("click", (event) => createPlace(event.latlng.lat, event.latlng.lng));
+map.on("click", (event) => safeCreatePlace(event.latlng.lat, event.latlng.lng));
+
+function safeCreatePlace(lat, lng) {
+  try {
+    createPlace(lat, lng);
+  } catch (error) {
+    console.error("Kunde inte skapa plats", error);
+    showSaveStatus(`Kunde inte skapa plats: ${error?.message || error}`);
+  }
+}
 
 function createPlace(lat, lng) {
   const now = new Date().toISOString();
@@ -137,7 +158,7 @@ function renderMarkers() {
 
   state.places.forEach((place) => {
     const marker = L.marker([place.lat, place.lng], { draggable: true }).addTo(map);
-    marker.bindPopup(() => buildPopup(place), {
+    marker.bindPopup(buildPopup(place), {
       maxWidth: 430,
       minWidth: 300,
       autoPan: true,
