@@ -30,10 +30,21 @@ const templates = [
 const defaultCenter = [59.3293, 18.0686];
 const map = L.map("map", { zoomControl: false }).setView(defaultCenter, 11);
 L.control.zoom({ position: "bottomright" }).addTo(map);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "&copy; OpenStreetMap"
+
+const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17,
+  attribution: 'Kartdata: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bidragsgivare, SRTM | Kartstil: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
 }).addTo(map);
+
+const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bidragsgivare'
+});
+
+L.control.layers({
+  "Höjdkurvor": topoLayer,
+  "Standardkarta": osmLayer
+}, null, { position: "bottomright" }).addTo(map);
 
 const state = {
   places: normalizePlaces(loadPlaces()),
@@ -157,9 +168,11 @@ function renderMarkers() {
     const marker = L.marker([place.lat, place.lng], { draggable: true }).addTo(map);
     marker.bindPopup(buildPopup(place), {
       maxWidth: 430,
-      minWidth: 300,
+      minWidth: 260,
       autoPan: true,
       keepInView: true,
+      autoPanPaddingTopLeft: L.point(18, 18),
+      autoPanPaddingBottomRight: L.point(18, 18),
       offset: L.point(0, 34)
     });
     marker.on("click", (event) => {
