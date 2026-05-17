@@ -101,6 +101,8 @@ h1 { font-size: 1.35rem; line-height: 1.1; margin: 0; }
 .leaflet-popup-tip-container {
   top: 0;
   bottom: auto;
+  left: 28px;
+  margin-left: 0;
   transform: translateY(-1px) rotate(180deg);
 }
 .leaflet-popup-close-button {

@@ -41,6 +41,7 @@ const state = {
   selectedId: null,
   markers: new Map(),
   moveModeId: null,
+  popupOpen: false,
   suppressMapCreateUntil: 0
 };
 
@@ -62,7 +63,12 @@ showSaveStatus("Sparat lokalt");
 map.on("click", (event) => {
   if (Date.now() < state.suppressMapCreateUntil) return;
 
-  if (state.selectedId) {
+  if (state.moveModeId) {
+    moveSelectedPlaceTo(event.latlng.lat, event.latlng.lng);
+    return;
+  }
+
+  if (state.popupOpen || state.selectedId) {
     closeActivePopup();
     return;
   }
@@ -71,16 +77,17 @@ map.on("click", (event) => {
 });
 
 map.on("popupopen", () => {
+  state.popupOpen = true;
   document.body.classList.add("popup-is-open");
 });
 
 map.on("popupclose", () => {
+  state.popupOpen = false;
   document.body.classList.remove("popup-is-open");
   state.selectedId = null;
-  stopMoveMode();
   // Leaflet can close a popup and let the same pointer event continue to the map.
   // This guard makes the first outside click close only, never create a new point.
-  state.suppressMapCreateUntil = Date.now() + 250;
+  state.suppressMapCreateUntil = Date.now() + 350;
 });
 
 elements.newAtCenter.addEventListener("click", () => {
@@ -152,17 +159,17 @@ function closeActivePopup() {
   map.closePopup();
 }
 
-function updatePlace(place, patch) {
+function updatePlace(place, patch, { refresh = false } = {}) {
   Object.assign(place, patch, { updatedAt: new Date().toISOString() });
   persist();
-  refreshMarker(place.id);
+  if (refresh) refreshMarker(place.id);
 }
 
-function updateBlock(place, block, patch) {
+function updateBlock(place, block, patch, { refresh = false } = {}) {
   Object.assign(block, patch);
   place.updatedAt = new Date().toISOString();
   persist();
-  refreshMarker(place.id);
+  if (refresh) refreshMarker(place.id);
 }
 
 function deletePlace(place) {
@@ -179,7 +186,7 @@ function renderMarkers() {
 
   state.places.forEach((place) => {
     const marker = L.marker([place.lat, place.lng], {
-      draggable: state.moveModeId === place.id,
+      draggable: false,
       autoPan: true
     }).addTo(map);
 
@@ -189,11 +196,12 @@ function renderMarkers() {
       autoPan: true,
       autoPanPaddingTopLeft: [14, 14],
       autoPanPaddingBottomRight: [14, 14],
-      offset: [0, 8]
+      offset: [180, 8]
     });
 
     marker.on("click", (event) => {
       L.DomEvent.stop(event);
+      if (state.moveModeId) return;
       openPlace(place.id);
     });
 
@@ -228,6 +236,8 @@ function buildPopup(place) {
 
   L.DomEvent.disableClickPropagation(node);
   L.DomEvent.disableScrollPropagation(node);
+  node.addEventListener("click", (event) => event.stopPropagation());
+  node.addEventListener("pointerdown", (event) => event.stopPropagation());
 
   const titleInput = node.querySelector(".popup-title");
   const stars = Array.from(node.querySelectorAll(".star"));
@@ -258,7 +268,7 @@ function buildPopup(place) {
         id: newId(),
         title: templateItem.title,
         body: templateItem.body || "",
-        expanded: true
+        expanded: false
       });
       place.updatedAt = new Date().toISOString();
       persist();
@@ -269,18 +279,10 @@ function buildPopup(place) {
 
   renderBlocks(place, blocksRoot);
 
-  moveButton.textContent = state.moveModeId === place.id ? "Klar flytt" : "Flytta punkt";
+  moveButton.textContent = state.moveModeId === place.id ? "Klicka ny plats" : "Flytta punkt";
   moveButton.classList.toggle("active", state.moveModeId === place.id);
   moveButton.addEventListener("click", () => {
-    if (state.moveModeId === place.id) {
-      stopMoveMode();
-      moveButton.textContent = "Flytta punkt";
-      moveButton.classList.remove("active");
-    } else {
-      startMoveMode(place.id);
-      moveButton.textContent = "Klar flytt";
-      moveButton.classList.add("active");
-    }
+    startMoveMode(place.id);
   });
 
   deleteButton.addEventListener("click", () => {
@@ -302,7 +304,9 @@ function renderBlocks(place, root) {
     summary.className = "block-summary";
     summary.innerHTML = `<span aria-hidden="true">${block.expanded ? "▼" : "▶"}</span><span class="block-title"></span>`;
     summary.querySelector(".block-title").textContent = block.title || "Anteckning";
-    summary.addEventListener("click", () => {
+    summary.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       block.expanded = !block.expanded;
       place.updatedAt = new Date().toISOString();
       persist();
@@ -363,18 +367,31 @@ function markerReopen(id) {
 
 function startMoveMode(id) {
   state.moveModeId = id;
-  for (const [markerId, marker] of state.markers.entries()) {
-    if (markerId === id) marker.dragging.enable();
-    else marker.dragging.disable();
+  state.suppressMapCreateUntil = Date.now() + 350;
+  map.closePopup();
+  showSaveStatus("Flyttläge: klicka på ny plats");
+}
+
+function moveSelectedPlaceTo(lat, lng) {
+  const place = state.places.find((item) => item.id === state.moveModeId);
+  if (!place) {
+    stopMoveMode();
+    return;
   }
-  showSaveStatus("Flyttläge: dra punkten");
+
+  place.lat = lat;
+  place.lng = lng;
+  place.updatedAt = new Date().toISOString();
+  persist();
+  const id = place.id;
+  stopMoveMode();
+  renderMarkers();
+  openPlace(id);
+  showSaveStatus(`Flyttad · Sparat ${timeStamp()}`);
 }
 
 function stopMoveMode() {
   state.moveModeId = null;
-  for (const marker of state.markers.values()) {
-    if (marker.dragging) marker.dragging.disable();
-  }
 }
 
 function renderStars(buttons, priority) {
