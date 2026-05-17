@@ -357,3 +357,38 @@ h2 { font-size: 1.05rem; margin-bottom: 4px; }
     min-height: 32px;
   }
 }
+
+
+/* Patch: when a popup is open, remove competing chrome. */
+.popup-is-open .map-actions {
+  display: none;
+}
+
+@media (max-width: 759px) {
+  .popup-is-open .topbar {
+    display: none;
+  }
+}
+
+/* Patch: place popup visually below the marker when the arrow is on the top edge.
+   Leaflet anchors popups from the lower edge by default; this transform moves
+   the whole card down so the top arrow matches the actual map point. */
+.leaflet-popup {
+  margin-bottom: 0 !important;
+  transform: translateY(calc(100% + 24px));
+}
+
+.leaflet-popup-tip-container {
+  bottom: auto !important;
+  top: -20px !important;
+}
+
+.leaflet-popup-tip {
+  margin: 12px auto 0 !important;
+}
+
+@media (max-width: 759px) {
+  .leaflet-popup {
+    transform: translateY(calc(100% + 18px));
+  }
+}

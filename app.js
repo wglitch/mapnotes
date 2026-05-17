@@ -70,6 +70,7 @@ const elements = {
 persist(false);
 renderMarkers();
 showSaveStatus("Sparat lokalt");
+setPopupUiOpen(false);
 
 if (elements.newAtCenter) elements.newAtCenter.addEventListener("click", () => {
   const center = map.getCenter();
@@ -105,6 +106,10 @@ map.on("click", (event) => {
   }
   safeCreatePlace(event.latlng.lat, event.latlng.lng);
 });
+
+function setPopupUiOpen(isOpen) {
+  document.body.classList.toggle("popup-is-open", Boolean(isOpen));
+}
 
 function safeCreatePlace(lat, lng) {
   try {
@@ -181,10 +186,12 @@ function renderMarkers() {
     });
     marker.on("popupopen", () => {
       state.selectedId = place.id;
+      setPopupUiOpen(true);
       stopPopupPropagation(marker);
     });
     marker.on("popupclose", () => {
       if (state.selectedId === place.id) state.selectedId = null;
+      setPopupUiOpen(false);
     });
     marker.on("dragend", () => {
       const { lat, lng } = marker.getLatLng();
@@ -322,6 +329,7 @@ function buildPopup(place) {
     if (!ok) return;
     state.places = state.places.filter((item) => item.id !== place.id);
     state.selectedId = null;
+    setPopupUiOpen(false);
     persist();
     renderMarkers();
   });
