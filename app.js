@@ -22,6 +22,15 @@ const blockPlaceholders = {
 };
 
 const defaultCenter = [59.3293, 18.0686];
+const defaultPlaceTitle = "Ny scoutingplats";
+const defaultOverviewTitle = "Översikt";
+const priorityStyles = {
+  1: { color: "#b35a52", size: 26 },
+  2: { color: "#e57f2a", size: 28 },
+  3: { color: "#f0ca3a", size: 28 },
+  4: { color: "#8fe84d", size: 32 },
+  5: { color: "#24ff4a", size: 36 }
+};
 const map = L.map("map", { zoomControl: false, closePopupOnClick: false }).setView(defaultCenter, 11);
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
@@ -126,7 +135,7 @@ function createPlace(lat, lng) {
   const now = new Date().toISOString();
   const place = normalizePlace({
     id: newId(),
-    title: "Ny scoutingplats",
+    title: "",
     lat,
     lng,
     priority: 3,
@@ -134,9 +143,10 @@ function createPlace(lat, lng) {
     blocks: [
       {
         id: newId(),
-        title: "Översikt",
+        title: "",
         body: "",
-        expanded: false
+        expanded: false,
+        isOverview: true
       }
     ],
     createdAt: now,
@@ -198,7 +208,8 @@ function renderMarkers() {
   state.places.forEach((place) => {
     const marker = L.marker([place.lat, place.lng], {
       draggable: false,
-      autoPan: true
+      autoPan: true,
+      icon: createPriorityIcon(place.priority)
     }).addTo(map);
 
     marker.on("click", (event) => {
@@ -227,6 +238,7 @@ function refreshMarker(id) {
   if (!place || !marker) return;
 
   marker.setLatLng([place.lat, place.lng]);
+  marker.setIcon(createPriorityIcon(place.priority));
   if (state.selectedId === id) renderEditorOverlay(place);
 }
 
@@ -318,13 +330,14 @@ function buildPopup(place) {
   node.append(closeButton);
 
   titleInput.value = place.title || "";
+  titleInput.placeholder = defaultPlaceTitle;
   titleInput.addEventListener("input", () => updatePlace(place, { title: titleInput.value }));
 
   renderStars(stars, place.priority || 3);
   stars.forEach((button) => {
     button.addEventListener("click", () => {
       const priority = Number(button.dataset.priority);
-      updatePlace(place, { priority });
+      updatePlace(place, { priority }, { refresh: true });
       renderStars(stars, priority);
     });
   });
@@ -370,12 +383,13 @@ function renderBlocks(place, root) {
   place.blocks.forEach((block) => {
     const article = document.createElement("article");
     article.className = `block${block.expanded ? " is-expanded" : ""}`;
+    const isOverviewBlock = isOverview(block);
 
     const summary = document.createElement("button");
     summary.type = "button";
     summary.className = "block-summary";
     summary.innerHTML = `<span aria-hidden="true">${block.expanded ? "▼" : "▶"}</span><span class="block-title"></span>`;
-    summary.querySelector(".block-title").textContent = block.title || "Anteckning";
+    setBlockSummaryTitle(summary, block);
     summary.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -393,12 +407,12 @@ function renderBlocks(place, root) {
     titleLabel.textContent = "Rubrik";
     const titleInput = document.createElement("input");
     titleInput.value = block.title || "";
-    titleInput.placeholder = "Rubrik";
+    titleInput.placeholder = isOverviewBlock ? defaultOverviewTitle : "Rubrik";
     titleInput.addEventListener("input", () => {
       block.title = titleInput.value;
       place.updatedAt = new Date().toISOString();
       persist();
-      summary.querySelector(".block-title").textContent = block.title || "Anteckning";
+      setBlockSummaryTitle(summary, block);
     });
     titleLabel.append(titleInput);
 
@@ -406,7 +420,7 @@ function renderBlocks(place, root) {
     textLabel.textContent = "Text";
     const textarea = document.createElement("textarea");
     textarea.value = block.body || "";
-    textarea.placeholder = block.title === "Översikt" ? overviewPlaceholder : (blockPlaceholders[block.title] || "Skriv anteckning här.");
+    textarea.placeholder = isOverviewBlock ? overviewPlaceholder : (blockPlaceholders[block.title] || "Skriv anteckning här.");
     textarea.addEventListener("input", () => updateBlock(place, block, { body: textarea.value }));
     textLabel.append(textarea);
 
@@ -480,6 +494,31 @@ function renderStars(buttons, priority) {
     button.textContent = value <= priority ? "★" : "☆";
     button.classList.toggle("selected", value <= priority);
   });
+}
+
+function createPriorityIcon(priority) {
+  const value = clampPriority(priority);
+  const style = priorityStyles[value] || priorityStyles[3];
+  const size = style.size;
+  const height = Math.round(size * 1.34);
+
+  return L.divIcon({
+    className: "priority-marker-host",
+    html: `<span class="priority-marker" style="--marker-color: ${style.color}; --marker-size: ${size}px"></span>`,
+    iconSize: [size, height],
+    iconAnchor: [Math.round(size / 2), height]
+  });
+}
+
+function setBlockSummaryTitle(summary, block) {
+  const title = summary.querySelector(".block-title");
+  const fallback = isOverview(block) ? defaultOverviewTitle : "Anteckning";
+  title.textContent = block.title || fallback;
+  title.classList.toggle("is-placeholder", !block.title);
+}
+
+function isOverview(block) {
+  return block.isOverview || block.title === defaultOverviewTitle;
 }
 
 function exportPlaces() {
@@ -556,17 +595,18 @@ function normalizePlace(raw) {
   if (!raw || !Number.isFinite(Number(raw.lat)) || !Number.isFinite(Number(raw.lng))) return null;
   const now = new Date().toISOString();
   const blocks = Array.isArray(raw.blocks) && raw.blocks.length
-    ? raw.blocks.map((block) => ({
+    ? raw.blocks.map((block, index) => ({
         id: block.id || newId(),
-        title: block.title || "Anteckning",
+        title: block.title === defaultOverviewTitle ? "" : (block.title || ""),
         body: block.body || "",
-        expanded: false
+        expanded: false,
+        isOverview: Boolean(block.isOverview) || index === 0 && (!block.title || block.title === defaultOverviewTitle)
       }))
-    : [{ id: newId(), title: "Översikt", body: "", expanded: false }];
+    : [{ id: newId(), title: "", body: "", expanded: false, isOverview: true }];
 
   return {
     id: raw.id || newId(),
-    title: raw.title || "Ny scoutingplats",
+    title: raw.title === defaultPlaceTitle ? "" : (raw.title || ""),
     lat: Number(raw.lat),
     lng: Number(raw.lng),
     priority: clampPriority(raw.priority),
